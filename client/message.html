@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messages - Mobile App</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="message-styles.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top static row -->
+        <div class="top-row">
+            <button class="back-button">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <div class="search-container">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" class="search-input" placeholder="Search">
+                <button class="search-clear-button" style="display: none;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <button class="add-button">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>
+
+        <!-- Message history container -->
+        <div class="message-container">
+            <!-- Example messages -->
+            <div class="message received">
+                <div class="message-content">Hi there! How can I help you today?</div>
+                <div class="message-time">9:30 AM</div>
+            </div>
+            <div class="message sent">
+                <div class="message-content">I have a question about my account.</div>
+                <div class="message-time">9:31 AM</div>
+            </div>
+            <div class="message received">
+                <div class="message-content">Sure, I'd be happy to help with any account-related questions.</div>
+                <div class="message-time">9:32 AM</div>
+            </div>
+        </div>
+
+        <!-- Message input box -->
+        <div class="message-input-container">
+            <div class="message-input-wrapper">
+                <input type="text" class="message-input" placeholder="Type your message...">
+                <button class="message-clear-button" style="display: none;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <button class="message-send-button">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+    <script src="message.js"></script>
+</body>
+</html>

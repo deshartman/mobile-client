@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call - Mobile App</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="calling-styles.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top static row -->
+        <div class="top-row">
+            <button class="back-button">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <div class="search-container">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" class="search-input" placeholder="Search">
+                <button class="search-clear-button" style="display: none;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <button class="add-button">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>
+
+        <!-- Call information container -->
+        <div class="call-container">
+            <div class="call-status">Calling...</div>
+            <div class="contact-info">
+                <div class="contact-name">John Smith</div>
+                <div class="company-name">Acme Corporation</div>
+            </div>
+            
+            <!-- Keypad section -->
+            <div class="keypad-section" style="display: none;">
+                <div class="keypad-grid">
+                    <button class="keypad-button">1</button>
+                    <button class="keypad-button">2</button>
+                    <button class="keypad-button">3</button>
+                    <button class="keypad-button">4</button>
+                    <button class="keypad-button">5</button>
+                    <button class="keypad-button">6</button>
+                    <button class="keypad-button">7</button>
+                    <button class="keypad-button">8</button>
+                    <button class="keypad-button">9</button>
+                    <button class="keypad-button">*</button>
+                    <button class="keypad-button">0</button>
+                    <button class="keypad-button">#</button>
+                </div>
+            </div>
+
+            <!-- Call control buttons -->
+            <div class="call-controls">
+                <div class="control-buttons">
+                    <button class="control-button">
+                        <i class="fas fa-volume-mute"></i>
+                        <span>Speaker</span>
+                    </button>
+                    <button class="control-button">
+                        <i class="fas fa-keyboard"></i>
+                        <span>Keypad</span>
+                    </button>
+                    <button class="control-button">
+                        <i class="fas fa-microphone"></i>
+                        <span>Mute</span>
+                    </button>
+                </div>
+                <button class="end-call-button">
+                    <i class="fas fa-phone-slash"></i>
+                    <span>End Call</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    <script src="calling.js"></script>
+</body>
+</html>
