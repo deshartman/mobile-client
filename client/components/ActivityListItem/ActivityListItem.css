@@ -1,0 +1,130 @@
+.list-item {
+    display: flex;
+    padding: 12px;
+    border-bottom: 1px solid #e0e0e0;
+    background-color: white;
+    cursor: pointer;
+}
+
+.list-item:hover {
+    background-color: #f5f5f5;
+}
+
+.list-item-icon {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-right: 12px;
+    border-radius: 50%;
+    background-color: #e3f2fd;
+    cursor: pointer;
+}
+
+.list-item-icon i {
+    color: #2196f3;
+    font-size: 18px;
+}
+
+.list-item-icon .dropdown-arrow {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    font-size: 12px;
+    color: #757575;
+}
+
+.list-item-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.content-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.list-item-title {
+    font-weight: 500;
+    color: #212121;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.list-item-info-icon {
+    margin-left: 8px;
+    color: #757575;
+    cursor: pointer;
+}
+
+.list-item-subtitle {
+    color: #757575;
+    font-size: 0.9em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.list-item-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    min-width: 100px;
+}
+
+.list-item-time {
+    color: #757575;
+    font-size: 0.9em;
+}
+
+.list-item-duration {
+    color: #757575;
+    font-size: 0.8em;
+}
+
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    z-index: 1000;
+    min-width: 150px;
+}
+
+.dropdown-menu.show {
+    display: block;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    cursor: pointer;
+}
+
+.dropdown-item:hover {
+    background-color: #f5f5f5;
+}
+
+.dropdown-item i {
+    margin-right: 8px;
+    width: 20px;
+    text-align: center;
+}
+
+.phone-number {
+    font-family: monospace;
+}

@@ -1,0 +1,177 @@
+class ActivityListItem {
+    constructor(activity) {
+        this.activity = activity;
+        this.element = null;
+    }
+
+    getIconClass() {
+        switch (this.activity.type) {
+            case 'Phone':
+                return 'fas fa-phone';
+            case 'Message':
+                return 'fas fa-comment';
+            case 'WhatsApp':
+                return 'fab fa-whatsapp';
+            case 'SIP':
+                return 'fas fa-phone-alt';
+            case 'Client':
+                return 'fas fa-user';
+            default:
+                return 'fas fa-question';
+        }
+    }
+
+    getDisplayName() {
+        if (this.activity.contact) {
+            return `${this.activity.contact.firstName} ${this.activity.contact.lastName}`.trim();
+        }
+        return `<span class="phone-number">${this.activity.identityValue}</span>`;
+    }
+
+    getCompanyName() {
+        return this.activity.contact?.company || '';
+    }
+
+    formatDateTime(datetime) {
+        const date = new Date(datetime);
+        return date.toLocaleString('en-US', {
+            hour: 'numeric',
+            minute: 'numeric',
+            hour12: true,
+            month: 'short',
+            day: 'numeric'
+        });
+    }
+
+    formatDuration(minutes) {
+        if (minutes < 60) {
+            return `${minutes} mins`;
+        }
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        if (remainingMinutes === 0) {
+            return `${hours} hour${hours > 1 ? 's' : ''}`;
+        }
+        return `${hours} hour${hours > 1 ? 's' : ''} ${remainingMinutes} mins`;
+    }
+
+    handleInfoClick(event) {
+        event.stopPropagation();
+        if (this.activity.contact) {
+            const params = new URLSearchParams();
+            params.set('guid', this.activity.contact.guid);
+            params.set('firstName', this.activity.contact.firstName);
+            params.set('lastName', this.activity.contact.lastName);
+            params.set('identities', JSON.stringify(this.activity.contact.identities));
+            window.location.href = `contact.html?${params.toString()}`;
+        } else {
+            const params = new URLSearchParams();
+            params.set('firstName', '');
+            params.set('lastName', '');
+            params.set('identities', JSON.stringify([
+                { type: this.activity.type, value: this.activity.identityValue }
+            ]));
+            window.location.href = `contact.html?${params.toString()}`;
+        }
+    }
+
+    handleDropdownClick(event) {
+        event.stopPropagation();
+        const dropdownMenu = this.element.querySelector('.dropdown-menu');
+        // Close all other open dropdowns
+        document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
+            if (menu !== dropdownMenu) {
+                menu.classList.remove('show');
+            }
+        });
+        dropdownMenu.classList.toggle('show');
+    }
+
+    handleDropdownItemClick(event, action) {
+        event.stopPropagation();
+        const identity = this.activity.contact?.identities.find(id =>
+            id.type.toLowerCase() === action
+        ) || { value: this.activity.identityValue };
+
+        switch (action) {
+            case 'call':
+                window.location.href = `calling.html?number=${identity.value}`;
+                break;
+            case 'message':
+                window.location.href = `message.html?number=${identity.value}`;
+                break;
+            case 'whatsapp':
+                window.location.href = `whatsapp.html?number=${identity.value}`;
+                break;
+        }
+    }
+
+    handleItemClick(event) {
+        // Don't trigger if clicking on icon or info icon (they have their own handlers)
+        if (!event.target.closest('.list-item-icon') && !event.target.closest('.list-item-info-icon')) {
+            switch (this.activity.type) {
+                case 'Phone':
+                    window.location.href = 'calling.html';
+                    break;
+                case 'Message':
+                    window.location.href = 'message.html';
+                    break;
+                case 'WhatsApp':
+                    window.location.href = 'whatsapp.html';
+                    break;
+            }
+        }
+    }
+
+    attachEventListeners() {
+        // Item click
+        this.element.addEventListener('click', this.handleItemClick.bind(this));
+
+        // Info icon click
+        const infoIcon = this.element.querySelector('.list-item-info-icon');
+        infoIcon.addEventListener('click', this.handleInfoClick.bind(this));
+
+        // Dropdown toggle
+        const listItemIcon = this.element.querySelector('.list-item-icon');
+        listItemIcon.addEventListener('click', this.handleDropdownClick.bind(this));
+
+        // Dropdown item clicks
+        const dropdownItems = this.element.querySelectorAll('.dropdown-item');
+        dropdownItems.forEach(item => {
+            item.addEventListener('click', (e) =>
+                this.handleDropdownItemClick(e, item.dataset.action)
+            );
+        });
+    }
+
+    render() {
+        const template = document.getElementById('activity-list-item');
+        this.element = template.content.cloneNode(true).firstElementChild;
+
+        // Set icon
+        const iconType = this.element.querySelector('.icon-type');
+        iconType.className = this.getIconClass();
+
+        // Set title (name or phone number)
+        const title = this.element.querySelector('.list-item-title');
+        title.innerHTML = this.getDisplayName();
+
+        // Set subtitle (company)
+        const subtitle = this.element.querySelector('.list-item-subtitle');
+        subtitle.textContent = this.getCompanyName() || '\u00A0'; // Use non-breaking space if empty
+
+        // Set time and duration
+        const time = this.element.querySelector('.list-item-time');
+        time.textContent = this.formatDateTime(this.activity.datetime);
+
+        const duration = this.element.querySelector('.list-item-duration');
+        duration.textContent = this.formatDuration(this.activity.duration);
+
+        this.attachEventListeners();
+
+        return this.element;
+    }
+}
+
+// Export the component
+export default ActivityListItem;

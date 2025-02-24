@@ -1,3 +1,15 @@
+// Identity types enum
+const IdentityType = {
+    Phone: 'Phone',
+    Message: 'Message',
+    WhatsApp: 'WhatsApp',
+    SIP: 'SIP',
+    Client: 'Client'
+};
+
+// Custom event for contact updates
+const CONTACT_UPDATED_EVENT = 'contactUpdated';
+
 // Function to get URL parameters
 function getUrlParams() {
     const params = new URLSearchParams(window.location.search);
@@ -9,8 +21,10 @@ function getUrlParams() {
         identities = [];
     }
     return {
+        guid: params.get('guid') || '',
         firstName: params.get('firstName') || '',
         lastName: params.get('lastName') || '',
+        company: params.get('company') || '',
         identities
     };
 }
@@ -32,7 +46,7 @@ function createIdentityField(identity) {
     input.className = 'identity-input';
     input.setAttribute('data-type', identity.type);
     input.value = identity.value || '';
-    if (identity.type === 'Phone') {
+    if (identity.type === IdentityType.Phone) {
         input.required = true;
     }
     container.appendChild(input);
@@ -61,6 +75,7 @@ function handleImageUpload(event) {
 function handleSubmit() {
     const firstName = document.getElementById('firstName').value;
     const lastName = document.getElementById('lastName').value;
+    const company = document.getElementById('companyName').value;
 
     // Collect all identity values
     const identityInputs = document.querySelectorAll('.identity-input');
@@ -72,46 +87,33 @@ function handleSubmit() {
         .filter(identity => identity.value !== ''); // Only include non-empty identities
 
     // Ensure there's at least one phone number
-    if (!identities.some(id => id.type === 'Phone' && id.value)) {
+    if (!identities.some(id => id.type === IdentityType.Phone && id.value)) {
         alert('At least one phone number is required');
-        return;
+        return false;
     }
 
-    // Update the contact
-    window.updateContact(firstName, lastName, identities);
+    // Get the primary phone number (first phone number)
+    const primaryPhone = identities.find(id => id.type === IdentityType.Phone).value;
+
+    // Create or update contact in localStorage
+    const contacts = JSON.parse(localStorage.getItem('contacts') || '{}');
+    const contact = {
+        guid: getUrlParams().guid || `contact-${Date.now()}`,
+        firstName,
+        lastName,
+        company,
+        identities
+    };
+    contacts[primaryPhone] = contact;
+    localStorage.setItem('contacts', JSON.stringify(contacts));
+
+    // Dispatch custom event for contact update
+    window.dispatchEvent(new CustomEvent(CONTACT_UPDATED_EVENT, {
+        detail: { contact, primaryPhone }
+    }));
+
+    return true;
 }
-
-// Function to check if all required functions are available
-function checkDependencies() {
-    return window.IdentityType &&
-        typeof window.updateContact === 'function' &&
-        typeof window.getContact === 'function';
-}
-
-// Wait for dependencies to be available
-function waitForDependencies(callback) {
-    if (checkDependencies()) {
-        callback();
-    } else {
-        setTimeout(() => waitForDependencies(callback), 50);
-    }
-}
-
-// Set up event listeners
-document.addEventListener('DOMContentLoaded', () => {
-    // Wait for script.js to initialize
-    waitForDependencies(() => {
-        try {
-            // Populate form with existing data
-            populateForm();
-
-            // Set up event listeners after form is populated
-            setupEventListeners();
-        } catch (error) {
-            console.error('Error initializing contact form:', error);
-        }
-    });
-});
 
 // Function to ensure an element exists
 function ensureElement(id) {
@@ -129,6 +131,7 @@ function populateForm() {
     // Set form values
     ensureElement('firstName').value = params.firstName;
     ensureElement('lastName').value = params.lastName;
+    ensureElement('companyName').value = params.company;
 
     // Create identity fields for each type
     const identitiesContainer = ensureElement('identitiesContainer');
@@ -137,8 +140,7 @@ function populateForm() {
     }
 
     // Create fields for all possible identity types
-    const types = ['Phone', 'Message', 'WhatsApp', 'SIP', 'Client'];
-    types.forEach(type => {
+    Object.values(IdentityType).forEach(type => {
         const identity = (params.identities || []).find(id =>
             id.type.toLowerCase() === type.toLowerCase()
         ) || { type, value: '' };
@@ -154,39 +156,22 @@ function setupEventListeners() {
     backButton.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-
-        const firstName = document.getElementById('firstName').value;
-        const lastName = document.getElementById('lastName').value;
-
-        // Collect all identity values
-        const identityInputs = document.querySelectorAll('.identity-input');
-        const identities = Array.from(identityInputs)
-            .map(input => ({
-                type: input.dataset.type,
-                value: input.value.trim()
-            }))
-            .filter(identity => identity.value !== '');
-
-        // Ensure there's at least one phone number
-        if (!identities.some(id => id.type === 'Phone' && id.value)) {
-            alert('At least one phone number is required');
-            return;
+        if (handleSubmit()) {
+            window.location.href = 'index.html';
         }
-
-        // Update the contact
-        window.updateContact(firstName, lastName, identities);
-
-        // Navigate to index.html
-        window.location.href = 'index.html';
     });
 
     // Handle image upload
     const imageUpload = document.getElementById('imageUpload');
     imageUpload.addEventListener('change', handleImageUpload);
+}
 
-    // Handle form input changes
-    const inputs = document.querySelectorAll('input[type="text"], input[type="tel"]');
-    inputs.forEach(input => {
-        input.addEventListener('change', handleSubmit);
-    });
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        populateForm();
+        setupEventListeners();
+    } catch (error) {
+        console.error('Error initializing contact form:', error);
+    }
 });
