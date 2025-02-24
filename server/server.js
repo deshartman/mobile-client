@@ -9,7 +9,6 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const app = express();
-const PORT = process.env.PORT || 3000;
 let serverBaseUrl = process.env.SERVER_BASE_URL || "localhost"; // Store server URL
 
 app.use(express.json());    // For JSON payloads
@@ -139,35 +138,35 @@ app.delete('/users/:userGuid', (req, res) => {
 
 /**
  * Server initialization and port management.
- * Attempts to start the server on the configured port (from environment or default 3000).
+ * Attempts to start the server on the specified port.
  * If the port is in use, incrementally tries the next port number.
  * 
  * @function startServer
+ * @param {number} port - The port to attempt to start the server on
  * @returns {http.Server} Express server instance
  * @throws {Error} If server fails to start for reasons other than port in use
  */
-let currentPort = PORT;
+let PORT = process.env.PORT || 3000;
 
-const startServer = () => {
-    try {
-        const server = app.listen(currentPort, async () => {
-            try {
-                logOut('Server', `Server is running on port ${currentPort}`);
-            } catch (error) {
-                logError('Server', `Failed to load initial context and manifest: ${error}`);
-                process.exit(1);
-            }
-        });
-    } catch (error) {
+const startServer = (port) => {
+    // logOut('Server', `Starting server on port ${port}`);
+    const server = app.listen(port);
+
+    server.on('error', (error) => {     // Server emits events for errors
         if (error.code === 'EADDRINUSE') {
-            logOut('Server', `Port ${currentPort} is in use, trying ${currentPort + 1}`);
-            currentPort++;
-            startServer();
+            server.close();
+            logOut('Server', `Port ${port} is in use, trying ${port++}`);
+            startServer(port++);
         } else {
             logError('Server', `Failed to start server: ${error}`);
-            process.exit(1);
+            throw error;
         }
-    }
+    });
+
+    server.on('listening', () => {
+        logOut('Server', `Server started on port ${port}`);
+    });
 };
 
-startServer();
+
+startServer(PORT);
