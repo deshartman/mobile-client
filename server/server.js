@@ -89,15 +89,6 @@ app.delete('/contacts/:userGuid/:contactGuid', (req, res) => {
 });
 
 // User Endpoints
-app.post('/users', (req, res) => {
-    try {
-        const userGuid = userService.createUser(req.body);
-        res.status(201).json({ guid: userGuid });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
 app.get('/users/:userGuid', (req, res) => {
     try {
         const user = userService.getUser(req.params.userGuid);
