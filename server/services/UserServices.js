@@ -11,7 +11,7 @@
  * 
  */
 const EventEmitter = require('events');
-const { uuidv4 } = require('uuid');
+const { v4: uuidv4 } = require('uuid');
 const { logOut } = require('../utils/logger');
 
 class UserService extends EventEmitter {
