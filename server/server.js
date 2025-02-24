@@ -7,11 +7,13 @@
 
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 let serverBaseUrl = process.env.SERVER_BASE_URL || "localhost"; // Store server URL
 
 app.use(express.json());    // For JSON payloads
+app.use(express.static(path.join(__dirname, '../client'))); // Serve static files from client directory
 
 const { logOut, logError } = require('./utils/logger');
 
@@ -30,8 +32,8 @@ const userService = new UserService();
  * 
  ****************************************************/
 
-// Basic health check endpoint to verify server status.
-app.get('/', (req, res) => {
+// Health check endpoint moved to /health to not conflict with static file serving
+app.get('/health', (req, res) => {
     res.send(`Server Running on ${serverBaseUrl}:${PORT}`);
 });
 
