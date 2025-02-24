@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Back button functionality
     const backButton = document.querySelector('.back-button');
     backButton.addEventListener('click', () => {
-        window.location.href = 'index.html';
+        window.location.href = '/index.html';
     });
 
     // Search functionality
@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // End call button
     const endCallButton = document.querySelector('.end-call-button');
     endCallButton.addEventListener('click', () => {
-        window.location.href = 'index.html';
+        window.location.href = '/index.html';
     });
 
 });

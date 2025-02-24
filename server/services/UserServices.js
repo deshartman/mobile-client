@@ -47,7 +47,7 @@ class UserService extends EventEmitter {
             active: true,
             created: '2021-09-01T00:00:00Z',
         });
-        logOut('User Service', `Users: ${JSON.stringify(Object.fromEntries(this.users), null, 4)}`);
+        // logOut('User Service', `Users: ${JSON.stringify(Object.fromEntries(this.users), null, 4)}`);
     }
 
     /**
@@ -75,7 +75,7 @@ class UserService extends EventEmitter {
      */
     getUser(userGUID) {
         logOut('User Service', `Getting user ${userGUID}`);
-        logOut('User Service', `Users: ${JSON.stringify(Object.fromEntries(this.users), null, 4)}`);
+        // logOut('User Service', `Users: ${JSON.stringify(Object.fromEntries(this.users), null, 4)}`);
 
         const user = this.users.get(userGUID);
         logOut('User Service', `User: ${JSON.stringify(user, null, 4)}`);

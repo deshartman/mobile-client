@@ -89,7 +89,7 @@ messageInput.addEventListener('keypress', (e) => {
 
 // Back button functionality
 backButton.addEventListener('click', () => {
-    window.location.href = 'index.html';
+    window.location.href = '/index.html';
 });
 
 // Initial setup

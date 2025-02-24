@@ -4,111 +4,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mobile App</title>
-    <link rel="stylesheet" href="styles.css">
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- Import component styles -->
-    <link rel="stylesheet" href="components/ActivityListItem/ActivityListItem.css">
+    <!-- Import styles -->
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/components/ActivityListItem/ActivityListItem.css">
+    <link rel="stylesheet" href="/view/main/main.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- Top static row -->
-        <div class="top-row">
-            <div class="search-container">
-                <i class="fas fa-search search-icon"></i>
-                <input type="text" class="search-input" placeholder="Search">
-                <button class="search-clear-button" style="display: none;">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <button class="add-button">
-                <i class="fas fa-plus"></i>
-            </button>
-        </div>
+    <div id="app-root"></div>
 
-        <!-- Scrolling list -->
-        <div class="list-container">
-            <!-- List items will be dynamically added here -->
-        </div>
-    </div>
-
-    <!-- Load component templates and initialize -->
     <script type="module">
-        import ActivityList from './components/ActivityList/ActivityList.js';
+        // First import main.js to ensure it's loaded
+        import('/view/main/main.js')
+            .then(async () => {
+                try {
+                    // Then load and inject HTML content
+                    const response = await fetch('/view/main/main.html');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const html = await response.text();
+                    document.getElementById('app-root').innerHTML = html;
 
-        // Function to load template
-        async function loadTemplate() {
-            try {
-                const response = await fetch('./components/ActivityListItem/ActivityListItem.html');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    // Finally, dispatch DOMContentLoaded to trigger initialization
+                    // This ensures both the module and HTML content are ready
+                    document.dispatchEvent(new Event('DOMContentLoaded'));
+                } catch (error) {
+                    console.error('Error loading application:', error);
+                    document.getElementById('app-root').innerHTML = `
+                        <div class="error-message">Error loading application. Please refresh the page.</div>
+                    `;
                 }
-                const html = await response.text();
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const template = doc.querySelector('#activity-list-item');
-                if (!template) {
-                    throw new Error('Template not found in HTML');
-                }
-                document.body.appendChild(template);
-                return true;
-            } catch (error) {
-                console.error('Error loading template:', error);
-                return false;
-            }
-        }
-
-        // Initialize application
-        async function initializeApp() {
-            try {
-                // Wait for template to load
-                const templateLoaded = await loadTemplate();
-                if (!templateLoaded) {
-                    throw new Error('Failed to load template');
-                }
-
-                // Initialize activity list
-                const listContainer = document.querySelector('.list-container');
-                if (!listContainer) {
-                    throw new Error('List container not found');
-                }
-
-                const activityList = new ActivityList(listContainer);
-                activityList.initialize();
-
-                // Set up add button handler
-                const addButton = document.querySelector('.add-button');
-                if (!addButton) {
-                    throw new Error('Add button not found');
-                }
-
-                addButton.addEventListener('click', () => {
-                    window.location.href = 'contact.html';
-                });
-            } catch (error) {
-                console.error('Error initializing app:', error);
-                // Show error to user
-                const listContainer = document.querySelector('.list-container');
-                if (listContainer) {
-                    listContainer.innerHTML = `<div class="error-message">Error loading application. Please refresh the page.</div>`;
-                }
-            }
-        }
-
-        // Start initialization when DOM is loaded
-        document.addEventListener('DOMContentLoaded', initializeApp);
+            })
+            .catch(error => {
+                console.error('Error importing main.js:', error);
+                document.getElementById('app-root').innerHTML = `
+                    <div class="error-message">Error initializing application. Please refresh the page.</div>
+                `;
+            });
     </script>
-
-    <style>
-        .error-message {
-            color: #721c24;
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            padding: 1rem;
-            margin: 1rem;
-            border-radius: 4px;
-            text-align: center;
-        }
-    </style>
 </body>
 </html>

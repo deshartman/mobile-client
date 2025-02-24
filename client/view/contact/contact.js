@@ -157,7 +157,7 @@ function setupEventListeners() {
         e.preventDefault();
         e.stopPropagation();
         if (handleSubmit()) {
-            window.location.href = 'index.html';
+            window.location.href = '/index.html';
         }
     });
 

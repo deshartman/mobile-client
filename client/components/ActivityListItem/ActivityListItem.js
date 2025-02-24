@@ -63,7 +63,7 @@ class ActivityListItem {
             params.set('firstName', this.activity.contact.firstName);
             params.set('lastName', this.activity.contact.lastName);
             params.set('identities', JSON.stringify(this.activity.contact.identities));
-            window.location.href = `contact.html?${params.toString()}`;
+            window.location.href = `view/contact/contact.html?${params.toString()}`;
         } else {
             const params = new URLSearchParams();
             params.set('firstName', '');
@@ -71,7 +71,7 @@ class ActivityListItem {
             params.set('identities', JSON.stringify([
                 { type: this.activity.type, value: this.activity.identityValue }
             ]));
-            window.location.href = `contact.html?${params.toString()}`;
+            window.location.href = `view/contact/contact.html?${params.toString()}`;
         }
     }
 
@@ -95,13 +95,13 @@ class ActivityListItem {
 
         switch (action) {
             case 'call':
-                window.location.href = `calling.html?number=${identity.value}`;
+                window.location.href = `view/calling/calling.html?number=${identity.value}`;
                 break;
             case 'message':
-                window.location.href = `message.html?number=${identity.value}`;
+                window.location.href = `view/message/message.html?number=${identity.value}`;
                 break;
             case 'whatsapp':
-                window.location.href = `whatsapp.html?number=${identity.value}`;
+                window.location.href = `view/whatsapp/whatsapp.html?number=${identity.value}`;
                 break;
         }
     }
@@ -109,15 +109,17 @@ class ActivityListItem {
     handleItemClick(event) {
         // Don't trigger if clicking on icon or info icon (they have their own handlers)
         if (!event.target.closest('.list-item-icon') && !event.target.closest('.list-item-info-icon')) {
+            const identity = { value: this.activity.identityValue };
+
             switch (this.activity.type) {
                 case 'Phone':
-                    window.location.href = 'calling.html';
+                    window.location.href = `view/calling/calling.html?number=${identity.value}`;
                     break;
                 case 'Message':
-                    window.location.href = 'message.html';
+                    window.location.href = `view/message/message.html?number=${identity.value}`;
                     break;
                 case 'WhatsApp':
-                    window.location.href = 'whatsapp.html';
+                    window.location.href = `view/whatsapp/whatsapp.html?number=${identity.value}`;
                     break;
             }
         }
