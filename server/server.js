@@ -8,6 +8,8 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const { AccessToken } = require('twilio').jwt;
+const { VoiceGrant } = AccessToken;
 const app = express();
 let serverBaseUrl = process.env.SERVER_BASE_URL || "localhost"; // Store server URL
 
@@ -133,6 +135,47 @@ app.delete('/users/:userGuid', (req, res) => {
     try {
         userService.deleteUser(req.params.userGuid);
         res.status(204).send();
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Twilio Voice Token endpoint
+app.get('/voice-token', (req, res) => {
+    try {
+        // Get guid from query parameter
+        const userGuid = req.query.guid;
+
+        if (!userGuid) {
+            return res.status(400).json({ error: 'Missing required parameter: guid' });
+        }
+
+        // Check if user exists
+        const user = userService.getUser(userGuid);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Create a Voice Grant for this token
+        const voiceGrant = new VoiceGrant({
+            outgoingApplicationSid: process.env.TWIML_APP_SID,
+            incomingAllow: true, // Allow incoming calls
+        });
+
+        // Create an access token with the guid as the identity
+        const token = new AccessToken(
+            process.env.ACCOUNT_SID,
+            process.env.TWILIO_API_KEY,
+            process.env.TWILIO_API_SECRET,
+            { identity: userGuid }
+        );
+
+        // Add the voice grant to the token
+        token.addGrant(voiceGrant);
+
+        // Return the token as JSON
+        res.json({ token: token.toJwt() });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
