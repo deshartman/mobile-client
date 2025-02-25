@@ -46,6 +46,25 @@ app.get('/contacts/:userGuid', (req, res) => {
     }
 });
 
+// Activities Endpoints
+app.get('/activities/:userGuid', (req, res) => {
+    try {
+        const activities = contactService.getActivities(req.params.userGuid);
+        res.json(activities);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/activities/:userGuid', (req, res) => {
+    try {
+        const activity = contactService.addActivity(req.params.userGuid, req.body);
+        res.status(201).json(activity);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.get('/contacts/:userGuid/:contactGuid', (req, res) => {
     try {
         const contact = contactService.getContact(req.params.userGuid, req.params.contactGuid);

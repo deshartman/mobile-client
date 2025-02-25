@@ -1,145 +1,112 @@
 import ActivityListItem from '../ActivityListItem/ActivityListItem.js';
+import ApiService from '../../services/ApiService.js';
 
 const CONTACT_UPDATED_EVENT = 'contactUpdated';
 
-// Sample contacts for initial data
-const SAMPLE_CONTACTS = {
-    '+1 (555) 444-3333': {
-        guid: 'contact-1',
-        firstName: 'Emma',
-        lastName: 'Thompson',
-        company: 'Tech Corp',
-        identities: [
-            { type: 'Phone', value: '+1 (555) 444-3333' },
-            { type: 'WhatsApp', value: '+1 (555) 444-3333' }
-        ]
-    },
-    '+1 (555) 555-5555': {
-        guid: 'contact-2',
-        firstName: 'Michael',
-        lastName: 'Chen',
-        company: 'Innovation Labs',
-        identities: [
-            { type: 'Phone', value: '+1 (555) 555-5555' },
-            { type: 'Message', value: '+1 (555) 555-5555' }
-        ]
-    },
-    '+1 (555) 666-6666': {
-        guid: 'contact-3',
-        firstName: 'John',
-        lastName: 'Smith',
-        company: 'Acme Corp',
-        identities: [
-            { type: 'Phone', value: '+1 (555) 666-6666' },
-            { type: 'Message', value: '+1 (555) 666-6666' },
-            { type: 'WhatsApp', value: '+1 (555) 666-6666' }
-        ]
-    }
-};
-
-// Sample activities for initial data
-const SAMPLE_ACTIVITIES = [
-    {
-        type: 'Phone',
-        datetime: '2025-02-23T01:15:00',
-        duration: 45,
-        identityValue: '+1 (555) 444-3333'
-    },
-    {
-        type: 'Message',
-        datetime: '2025-02-22T10:30:00',
-        duration: 15,
-        identityValue: '+1 (555) 555-5555'
-    },
-    {
-        type: 'WhatsApp',
-        datetime: '2025-02-22T09:15:00',
-        duration: 30,
-        identityValue: '+1 (555) 666-6666'
-    },
-    {
-        type: 'Phone',
-        datetime: '2025-02-22T08:45:00',
-        duration: 25,
-        identityValue: '+1 (555) 777-7777'
-    }
-];
+// Default user ID for demo purposes
+const DEFAULT_USER_ID = '6fdf6ffc-ed77-94fa-407e-a7b86ed9e59d'; // John Doe
 
 class ActivityList {
     constructor(containerElement) {
         this.containerElement = containerElement;
         this.activities = [];
-        this.contacts = new Map();
+        this.contacts = [];
+        this.isLoading = false;
+        this.hasError = false;
+        this.errorMessage = '';
+        this.userId = DEFAULT_USER_ID;
     }
 
-    // Initialize sample data if none exists
-    initializeSampleData() {
-        const storedContacts = localStorage.getItem('contacts');
-        const storedActivities = localStorage.getItem('activities');
+    // Show loading state
+    showLoading() {
+        this.isLoading = true;
+        this.containerElement.innerHTML = `
+            <div class="loading-indicator">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span>Loading activities...</span>
+            </div>
+        `;
+    }
 
-        if (!storedContacts) {
-            localStorage.setItem('contacts', JSON.stringify(SAMPLE_CONTACTS));
+    // Show error state
+    showError(message) {
+        this.hasError = true;
+        this.errorMessage = message;
+        this.containerElement.innerHTML = `
+            <div class="error-message">
+                <i class="fas fa-exclamation-circle"></i>
+                <span>${message}</span>
+                <button class="retry-button">Retry</button>
+            </div>
+        `;
+
+        // Add retry button handler
+        const retryButton = this.containerElement.querySelector('.retry-button');
+        if (retryButton) {
+            retryButton.addEventListener('click', () => this.fetchData());
         }
+    }
 
-        if (!storedActivities) {
-            const activities = SAMPLE_ACTIVITIES.map(activity => {
-                const contact = SAMPLE_CONTACTS[activity.identityValue];
-                return {
-                    ...activity,
-                    contact: contact || null
-                };
-            });
-            localStorage.setItem('activities', JSON.stringify(activities));
+    // Fetch data from server
+    async fetchData() {
+        this.showLoading();
+
+        try {
+            // Fetch activities first as they already include contact information
+            const activities = await ApiService.fetchActivities(this.userId);
+
+            // Store activities
+            this.activities = activities;
+
+            // Sort activities by datetime
+            this.activities.sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
+
+            // Reset error state
+            this.hasError = false;
+            this.errorMessage = '';
+
+            // Render the list
+            this.render();
+        } catch (error) {
+            console.error('Error fetching data:', error);
+            this.showError('Failed to load activities. Please try again.');
+        } finally {
+            this.isLoading = false;
         }
     }
 
-    // Load contacts from localStorage
-    loadContacts() {
-        const storedContacts = JSON.parse(localStorage.getItem('contacts') || '{}');
-        this.contacts = new Map(Object.entries(storedContacts));
-    }
-
-    // Load activities from localStorage
-    loadActivities() {
-        const storedActivities = JSON.parse(localStorage.getItem('activities') || '[]');
-
-        // Update activities with current contact information
-        this.activities = storedActivities.map(activity => {
-            const contact = Array.from(this.contacts.values()).find(c =>
-                c.identities.some(id => id.value === activity.identityValue)
-            );
-            return {
-                ...activity,
-                contact: contact || null
-            };
-        });
-
-        // Sort activities by datetime
-        this.activities.sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
-    }
-
-    // Add new activity for a contact
-    addActivity(contact) {
+    // Add new activity for a contact - now using the API
+    async addActivity(contact) {
         const phoneNumber = contact.identities.find(id => id.type === 'Phone')?.value;
         if (!phoneNumber) return;
 
-        // Check if activity already exists
-        const existingActivity = this.activities.find(a => a.identityValue === phoneNumber);
-        if (!existingActivity) {
+        try {
             // Create new activity
             const newActivity = {
                 type: 'Phone',
-                contact: contact,
                 datetime: new Date().toISOString(),
                 duration: 0,
-                identityValue: phoneNumber
+                identityValue: phoneNumber,
+                contactGuid: contact.guid
             };
 
-            // Add to beginning of activities array
-            this.activities.unshift(newActivity);
+            // Send to server
+            await ApiService.addActivity(this.userId, newActivity);
 
-            // Update localStorage
-            localStorage.setItem('activities', JSON.stringify(this.activities));
+            // Refresh data from server
+            await this.fetchData();
+        } catch (error) {
+            console.error('Error adding activity:', error);
+            // Show error message but don't disrupt the UI
+            const errorToast = document.createElement('div');
+            errorToast.className = 'error-toast';
+            errorToast.textContent = 'Failed to add activity';
+            document.body.appendChild(errorToast);
+
+            // Remove after 3 seconds
+            setTimeout(() => {
+                errorToast.remove();
+            }, 3000);
         }
     }
 
@@ -163,20 +130,14 @@ class ActivityList {
     }
 
     // Handle contact updates
-    handleContactUpdate(event) {
+    async handleContactUpdate(event) {
         const { contact } = event.detail;
 
-        // Update contacts
-        this.loadContacts();
-
         // Add new activity for this contact
-        this.addActivity(contact);
+        await this.addActivity(contact);
 
-        // Reload activities to update any existing ones
-        this.loadActivities();
-
-        // Re-render the list
-        this.render();
+        // Refresh data from server
+        await this.fetchData();
     }
 
     // Render the list with filtered activities
@@ -191,16 +152,9 @@ class ActivityList {
     }
 
     // Initialize the component
-    initialize() {
-        // Initialize sample data if needed
-        this.initializeSampleData();
-
-        // Load data
-        this.loadContacts();
-        this.loadActivities();
-
-        // Initial render
-        this.render();
+    async initialize() {
+        // Fetch data from server
+        await this.fetchData();
 
         // Set up search functionality
         const searchInput = document.querySelector('.search-input');
