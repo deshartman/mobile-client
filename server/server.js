@@ -10,6 +10,7 @@ const express = require('express');
 const path = require('path');
 const { AccessToken } = require('twilio').jwt;
 const { VoiceGrant } = AccessToken;
+
 const app = express();
 let serverBaseUrl = process.env.SERVER_BASE_URL || "localhost"; // Store server URL
 
@@ -110,6 +111,15 @@ app.delete('/contacts/:userGuid/:contactGuid', (req, res) => {
 });
 
 // User Endpoints
+app.post('/users', (req, res) => {
+    try {
+        const userGUID = userService.createUser(req.body);
+        res.status(201).json({ userGUID });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.get('/users/:userGuid', (req, res) => {
     try {
         const user = userService.getUser(req.params.userGuid);
