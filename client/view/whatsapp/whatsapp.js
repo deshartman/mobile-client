@@ -1,7 +1,12 @@
 // DOM Elements
 const backButton = document.querySelector('.back-button');
+const contactNameContainer = document.querySelector('.contact-name-container');
+const contactName = document.querySelector('.contact-name');
+const searchContainer = document.querySelector('.search-container');
 const searchInput = document.querySelector('.search-input');
 const searchClearButton = document.querySelector('.search-clear-button');
+const searchToggleButton = document.querySelector('.search-toggle-button');
+const topRow = document.querySelector('.top-row');
 const messageInput = document.querySelector('.message-input');
 const messageClearButton = document.querySelector('.message-clear-button');
 const messageSendButton = document.querySelector('.message-send-button');
@@ -27,6 +32,30 @@ searchClearButton.addEventListener('click', () => {
     messageContainer.querySelectorAll('.message').forEach(message => {
         message.style.display = 'flex';
     });
+    // Hide search and show contact name
+    toggleSearch(false);
+});
+
+// Search toggle functionality
+function toggleSearch(show) {
+    if (show) {
+        // Hide contact name, show search
+        contactNameContainer.style.display = 'none';
+        searchContainer.style.display = 'block';
+        topRow.classList.add('search-active');
+        searchInput.focus();
+    } else {
+        // Show contact name, hide search
+        contactNameContainer.style.display = 'block';
+        searchContainer.style.display = 'none';
+        topRow.classList.remove('search-active');
+    }
+}
+
+// Toggle search when search button is clicked
+searchToggleButton.addEventListener('click', () => {
+    const isSearchVisible = searchContainer.style.display === 'block';
+    toggleSearch(!isSearchVisible);
 });
 
 // Message input functionality
@@ -92,9 +121,40 @@ backButton.addEventListener('click', () => {
     window.location.href = '/index.html';
 });
 
+// Function to get contact name from URL or sessionStorage
+function getContactName() {
+    // Try to get contact from sessionStorage
+    const contactJson = sessionStorage.getItem('currentContact');
+    if (contactJson) {
+        try {
+            const contact = JSON.parse(contactJson);
+            return `${contact.firstName} ${contact.lastName}`.trim();
+        } catch (e) {
+            console.error('Error parsing contact from sessionStorage:', e);
+        }
+    }
+
+    // If no contact in sessionStorage, try to get from URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    const number = urlParams.get('number');
+
+    if (number) {
+        return number;
+    }
+
+    // Default fallback
+    return 'Contact';
+}
+
 // Initial setup
 messageClearButton.style.display = 'none';
 searchClearButton.style.display = 'none';
+
+// Set contact name
+contactName.textContent = getContactName();
+
+// Initialize search toggle state
+toggleSearch(false);
 
 // Scroll to bottom initially
 messageContainer.scrollTop = messageContainer.scrollHeight;

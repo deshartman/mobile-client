@@ -48,15 +48,33 @@ class ActivityList {
     }
 
     // Fetch data from server
-    async fetchData() {
+    async fetchData(forceRefresh = false) {
         this.showLoading();
 
         try {
-            // Fetch activities first as they already include contact information
-            const activities = await ApiService.fetchActivities(this.userId);
+            // Check if we should use cached data
+            const cachedData = sessionStorage.getItem('activitiesCache');
+            const cachedTimestamp = sessionStorage.getItem('activitiesCacheTimestamp');
+            const now = Date.now();
+            const dataAge = cachedTimestamp ? now - parseInt(cachedTimestamp) : Infinity;
+            const maxAge = 5 * 60 * 1000; // 5 minutes in milliseconds
 
-            // Store activities
-            this.activities = activities;
+            // Use cached data if it's fresh enough and not forcing refresh
+            if (!forceRefresh && cachedData && dataAge < maxAge) {
+                console.log('Using cached activities data');
+                this.activities = JSON.parse(cachedData);
+            } else {
+                console.log('Fetching fresh activities data');
+                // Fetch activities from server as they already include contact information
+                const activities = await ApiService.fetchActivities(this.userId);
+
+                // Store activities
+                this.activities = activities;
+
+                // Cache the fresh data
+                sessionStorage.setItem('activitiesCache', JSON.stringify(activities));
+                sessionStorage.setItem('activitiesCacheTimestamp', now.toString());
+            }
 
             // Sort activities by datetime
             this.activities.sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
@@ -176,6 +194,25 @@ class ActivityList {
 
         // Listen for contact updates
         window.addEventListener(CONTACT_UPDATED_EVENT, this.handleContactUpdate.bind(this));
+
+        // Make the activity list available globally for refresh triggers
+        window.activityList = this;
+
+        // Set up visibility change listener to refresh data when app comes to foreground
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                // Check if data is stale and refresh if needed
+                const cachedTimestamp = sessionStorage.getItem('activitiesCacheTimestamp');
+                const now = Date.now();
+                const dataAge = cachedTimestamp ? now - parseInt(cachedTimestamp) : Infinity;
+                const maxAge = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+                if (dataAge > maxAge) {
+                    console.log('Data is stale, refreshing...');
+                    this.fetchData(true);
+                }
+            }
+        });
     }
 }
 

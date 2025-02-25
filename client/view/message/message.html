@@ -16,15 +16,21 @@
             <button class="back-button">
                 <i class="fas fa-arrow-left"></i>
             </button>
-            <div class="search-container">
+            <!-- Contact name container (visible by default) -->
+            <div class="contact-name-container">
+                <span class="contact-name">Contact Name</span>
+            </div>
+            <!-- Search container (hidden by default) -->
+            <div class="search-container" style="display: none;">
                 <i class="fas fa-search search-icon"></i>
                 <input type="text" class="search-input" placeholder="Search">
                 <button class="search-clear-button" style="display: none;">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <button class="add-button">
-                <i class="fas fa-plus"></i>
+            <!-- Search toggle button (replaces add button) -->
+            <button class="search-toggle-button">
+                <i class="fas fa-search"></i>
             </button>
         </div>
 

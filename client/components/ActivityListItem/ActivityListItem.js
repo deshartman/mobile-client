@@ -93,6 +93,16 @@ class ActivityListItem {
             id.type.toLowerCase() === action
         ) || { value: this.activity.identityValue };
 
+        // Store contact data in sessionStorage if available
+        if (this.activity.contact) {
+            sessionStorage.setItem('currentContact', JSON.stringify(this.activity.contact));
+            sessionStorage.setItem('contactTimestamp', Date.now().toString());
+        } else {
+            // Clear any previous contact data
+            sessionStorage.removeItem('currentContact');
+            sessionStorage.removeItem('contactTimestamp');
+        }
+
         switch (action) {
             case 'call':
                 window.location.href = `view/calling/calling.html?number=${identity.value}`;
@@ -110,6 +120,16 @@ class ActivityListItem {
         // Don't trigger if clicking on icon or info icon (they have their own handlers)
         if (!event.target.closest('.list-item-icon') && !event.target.closest('.list-item-info-icon')) {
             const identity = { value: this.activity.identityValue };
+
+            // Store contact data in sessionStorage if available
+            if (this.activity.contact) {
+                sessionStorage.setItem('currentContact', JSON.stringify(this.activity.contact));
+                sessionStorage.setItem('contactTimestamp', Date.now().toString());
+            } else {
+                // Clear any previous contact data
+                sessionStorage.removeItem('currentContact');
+                sessionStorage.removeItem('contactTimestamp');
+            }
 
             switch (this.activity.type) {
                 case 'Phone':

@@ -33,10 +33,28 @@
     background-color: var(--color-background);
 }
 
+/* Contact Name Container Styles */
+.contact-name-container {
+    flex: 1;
+    margin-right: 16px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.contact-name {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .search-container {
     flex: 1;
     position: relative;
     margin-right: 16px;
+    transition: all 0.3s ease;
 }
 
 .search-icon {
@@ -84,21 +102,34 @@
     color: var(--color-text);
 }
 
-.add-button {
+.search-toggle-button {
     width: 40px;
     height: 40px;
     border-radius: 4px;
     border: none;
-    background-color: var(--color-primary);
+    background-color: #25D366;
     color: var(--color-white);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.3s ease;
 }
 
-.add-button:hover {
+.search-toggle-button:hover {
     opacity: 0.9;
+}
+
+/* Animation classes for search toggle */
+.search-active .contact-name-container {
+    max-width: 0;
+    opacity: 0;
+    margin-right: 0;
+}
+
+.search-active .search-container {
+    max-width: 100%;
+    opacity: 1;
 }
 
 /* Message Container Styles */

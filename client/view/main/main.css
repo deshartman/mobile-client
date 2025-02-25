@@ -82,17 +82,44 @@
     color: var(--color-text);
 }
 
-.add-button {
+.action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.refresh-button, .add-button {
     width: 40px;
     height: 40px;
     border-radius: 4px;
     border: none;
-    background-color: var(--color-primary);
-    color: var(--color-white);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.refresh-button {
+    background-color: var(--color-background);
+    color: var(--color-primary);
+    border: 1px solid var(--color-border);
+}
+
+.refresh-button:hover {
+    background-color: var(--color-border);
+}
+
+.refresh-button.loading i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.add-button {
+    background-color: var(--color-primary);
+    color: var(--color-white);
 }
 
 .add-button:hover {

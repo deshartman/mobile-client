@@ -1,4 +1,52 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Get contact data from sessionStorage
+    const contactJson = sessionStorage.getItem('currentContact');
+    const number = new URLSearchParams(window.location.search).get('number');
+
+    if (contactJson) {
+        try {
+            const contact = JSON.parse(contactJson);
+
+            // Update contact info in the DOM
+            const contactNameElement = document.querySelector('.contact-name');
+            const companyNameElement = document.querySelector('.company-name');
+
+            if (contactNameElement) {
+                contactNameElement.textContent =
+                    `${contact.firstName} ${contact.lastName}`.trim();
+            }
+
+            if (companyNameElement) {
+                companyNameElement.textContent = contact.company || '';
+            }
+        } catch (error) {
+            console.error('Error parsing contact data:', error);
+            // Fallback to showing the number
+            if (number) {
+                const contactNameElement = document.querySelector('.contact-name');
+                if (contactNameElement) {
+                    contactNameElement.textContent = number;
+                }
+
+                const companyNameElement = document.querySelector('.company-name');
+                if (companyNameElement) {
+                    companyNameElement.textContent = '';
+                }
+            }
+        }
+    } else if (number) {
+        // If no contact data but we have a number, display the number
+        const contactNameElement = document.querySelector('.contact-name');
+        if (contactNameElement) {
+            contactNameElement.textContent = number;
+        }
+
+        const companyNameElement = document.querySelector('.company-name');
+        if (companyNameElement) {
+            companyNameElement.textContent = '';
+        }
+    }
+
     // Back button functionality
     const backButton = document.querySelector('.back-button');
     backButton.addEventListener('click', () => {

@@ -22,6 +22,18 @@ async function loadTemplate() {
     }
 }
 
+// Check if data is stale
+function isDataStale() {
+    const cachedTimestamp = sessionStorage.getItem('activitiesCacheTimestamp');
+    if (!cachedTimestamp) return true;
+
+    const now = Date.now();
+    const dataAge = now - parseInt(cachedTimestamp);
+    const maxAge = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+    return dataAge > maxAge;
+}
+
 // Initialize application
 async function initializeApp() {
     try {
@@ -38,7 +50,16 @@ async function initializeApp() {
         }
 
         const activityList = new ActivityList(listContainer);
-        activityList.initialize();
+
+        // Force refresh if data is stale
+        const forceRefresh = isDataStale();
+        await activityList.initialize();
+
+        // If data was stale, force a refresh
+        if (forceRefresh) {
+            console.log('Data is stale on app start, refreshing...');
+            activityList.fetchData(true);
+        }
 
         // Set up add button handler
         const addButton = document.querySelector('.add-button');
@@ -49,6 +70,28 @@ async function initializeApp() {
         addButton.addEventListener('click', () => {
             window.location.href = 'view/contact/contact.html';
         });
+
+        // Add refresh button functionality if it exists
+        const refreshButton = document.querySelector('.refresh-button');
+        if (refreshButton) {
+            refreshButton.addEventListener('click', async () => {
+                // Add loading state
+                const refreshIcon = refreshButton.querySelector('i');
+                refreshButton.classList.add('loading');
+                refreshButton.disabled = true;
+
+                try {
+                    // Fetch fresh data
+                    await activityList.fetchData(true);
+                } catch (error) {
+                    console.error('Error refreshing data:', error);
+                } finally {
+                    // Remove loading state
+                    refreshButton.classList.remove('loading');
+                    refreshButton.disabled = false;
+                }
+            });
+        }
     } catch (error) {
         console.error('Error initializing app:', error);
         // Show error to user
