@@ -1,0 +1,25 @@
+<!-- Login View -->
+<div class="login-container">
+    <div class="login-header">
+        <h1>Welcome</h1>
+    </div>
+    
+    <!-- Login form will be shown if no user is found in localStorage -->
+    <div id="login-form" style="display: none;">
+        <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" id="name" class="form-input" placeholder="Enter your name" required>
+        </div>
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" class="form-input" placeholder="Enter your email" required>
+        </div>
+        <button id="login-button" class="login-button">Continue</button>
+    </div>
+    
+    <!-- Loading indicator -->
+    <div id="loading-indicator" class="loading-indicator">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>Loading...</span>
+    </div>
+</div>
