@@ -1,5 +1,5 @@
 /**  
- * This service is used to control access for users to the client application. Each user needs an identifier, usually their e-mail address, to access the application.
+ * This service is used to control access for users to the client application. Each user needs an identifier, usually their email address, to access the application.
  * We will generate a userGUID to identify them and store the associated details in a Map
  * 
  * 
@@ -24,13 +24,14 @@ class UserService extends EventEmitter {
      * Load users from a data source. TODO: This will initially be just a local dummy data, but any source in the future
      */
     loadUsers() {
-        // We need a map of users referenced against a user GUID. Each user will be logging into the app and based on their e-mail address, they will have a Map of users only visible to them
+        // We need a map of users referenced against a user GUID. Each user will be logging into the app and based on their email address, they will have a Map of users only visible to them
         /**
          * The data structure will be something like this:
          * 
          * data = new Map {
          *    'userGUID': "dhartman@twilio.com,
          *     'name": "Des Hartman",
+         *     'email': "dhartman@twilio.com",
          *     'active': true,
          *    'created': "2021-09-01T00:00:00Z"
          *} 
@@ -39,11 +40,13 @@ class UserService extends EventEmitter {
         this.users = new Map();
         this.users.set('6fdf6ffc-ed77-94fa-407e-a7b86ed9e59d', {
             name: 'John Doe',
+            email: 'john.doe@example.com',
             active: true,
             created: '2021-09-01T00:00:00Z',
         });
         this.users.set('6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx', {
             name: 'Jane Smith',
+            email: 'jane.smith@example.com',
             active: true,
             created: '2021-09-01T00:00:00Z',
         });
