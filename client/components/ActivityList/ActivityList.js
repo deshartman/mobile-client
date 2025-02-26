@@ -3,9 +3,6 @@ import ApiService from '../../services/ApiService.js';
 
 const CONTACT_UPDATED_EVENT = 'contactUpdated';
 
-// Default user ID for demo purposes. TODO: Remove this when the login window is sorted out
-const DEFAULT_USER_ID = '6fdf6ffc-ed77-94fa-407e-a7b86ed9e59d'; // John Doe
-
 // Constants for localStorage keys
 const USER_GUID_KEY = 'userGUID';
 
@@ -18,19 +15,10 @@ class ActivityList {
         this.hasError = false;
         this.errorMessage = '';
 
-        // Get user ID from localStorage or redirect to login if not found
-        let userGUID = localStorage.getItem(USER_GUID_KEY);
-        console.log('Check userGUID from local storage: ', userGUID);
-        if (!userGUID) {
-            // If there is no userGUID in localStorage, we need to present the login window to the user
-            // The user then enters detail and we build a new user on the server and store the userGUID in localStorage
-            // Temp hack to use default user for now
-            userGUID = DEFAULT_USER_ID;
-            console.log('No user GUID found in localStorage, switching to default user: ', userGUID);
-        }
-
+        // Get user ID from localStorage (we know it exists because index.html already checked)
+        const userGUID = localStorage.getItem(USER_GUID_KEY);
         this.userId = userGUID;
-        console.log('The suer ID now is userGUID: ', userGUID);
+        console.log('Using userGUID from localStorage:', userGUID);
 
     }
 
@@ -180,10 +168,21 @@ class ActivityList {
         this.containerElement.innerHTML = '';
         const filteredActivities = this.filterActivities(searchTerm);
 
-        filteredActivities.forEach(activity => {
-            const listItem = new ActivityListItem(activity);
-            this.containerElement.appendChild(listItem.render());
-        });
+        if (filteredActivities.length === 0) {
+            // Show empty state message when there are no activities
+            this.containerElement.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-info-circle"></i>
+                    <p>No Activity Yet. Click the "+" button to add your first contact.</p>
+                </div>
+            `;
+        } else {
+            // Render activities
+            filteredActivities.forEach(activity => {
+                const listItem = new ActivityListItem(activity);
+                this.containerElement.appendChild(listItem.render());
+            });
+        }
     }
 
     // Initialize the component

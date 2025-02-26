@@ -11,39 +11,55 @@
     <link rel="stylesheet" href="/components/ActivityListItem/ActivityListItem.css">
     <link rel="stylesheet" href="/components/ActivityList/ActivityList.css">
     <link rel="stylesheet" href="/view/main/main.css">
+    <link rel="stylesheet" href="/view/login/login.css">
 </head>
 <body>
     <div id="app-root"></div>
 
     <script type="module">
-        // First import main.js to ensure it's loaded
-        import('/view/main/main.js')
-            .then(async () => {
-                try {
-                    // Then load and inject HTML content
-                    const response = await fetch('/view/main/main.html');
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    const html = await response.text();
-                    document.getElementById('app-root').innerHTML = html;
-
-                    // Finally, dispatch DOMContentLoaded to trigger initialization
-                    // This ensures both the module and HTML content are ready
-                    document.dispatchEvent(new Event('DOMContentLoaded'));
-                } catch (error) {
-                    console.error('Error loading application:', error);
-                    document.getElementById('app-root').innerHTML = `
-                        <div class="error-message">Error loading application. Please refresh the page.</div>
-                    `;
+        // Check if user is logged in
+        const userGUID = localStorage.getItem('userGUID');
+        
+        try {
+            if (!userGUID) {
+                // No user found, load login view
+                console.log('No userGUID found in localStorage, loading login view');
+                
+                // Load and inject login HTML content
+                const response = await fetch('/view/login/login.html');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-            })
-            .catch(error => {
-                console.error('Error importing main.js:', error);
-                document.getElementById('app-root').innerHTML = `
-                    <div class="error-message">Error initializing application. Please refresh the page.</div>
-                `;
-            });
+                const html = await response.text();
+                document.getElementById('app-root').innerHTML = html;
+                
+                // Import login.js after HTML content is loaded
+                await import('/view/login/login.js');
+            } else {
+                // User found, load main view
+                console.log('userGUID found in localStorage, loading main view');
+                
+                // Load and inject main HTML content
+                const response = await fetch('/view/main/main.html');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const html = await response.text();
+                document.getElementById('app-root').innerHTML = html;
+                
+                // Import main.js after HTML content is loaded
+                await import('/view/main/main.js');
+            }
+            
+            // Dispatch DOMContentLoaded to trigger initialization
+            // This ensures both the module and HTML content are ready
+            document.dispatchEvent(new Event('DOMContentLoaded'));
+        } catch (error) {
+            console.error('Error loading application:', error);
+            document.getElementById('app-root').innerHTML = `
+            <div class="error-message">Error loading application. Please refresh the page.</div>
+            `;
+        }
     </script>
 </body>
 </html>

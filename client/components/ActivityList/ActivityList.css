@@ -64,6 +64,31 @@
     animation: fadeInOut 3s ease-in-out;
 }
 
+/* Empty state styles */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--color-text-weak, #666);
+    text-align: center;
+    height: 100%;
+}
+
+.empty-state i {
+    font-size: 48px;
+    margin-bottom: 20px;
+    color: var(--color-primary, #007bff);
+}
+
+.empty-state p {
+    font-size: 16px;
+    line-height: 1.5;
+    max-width: 300px;
+    margin: 0 auto;
+}
+
 @keyframes fadeInOut {
     0% { opacity: 0; transform: translate(-50%, 20px); }
     10% { opacity: 1; transform: translate(-50%, 0); }
