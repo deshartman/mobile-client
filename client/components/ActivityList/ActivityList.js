@@ -3,8 +3,11 @@ import ApiService from '../../services/ApiService.js';
 
 const CONTACT_UPDATED_EVENT = 'contactUpdated';
 
-// Default user ID for demo purposes
+// Default user ID for demo purposes. TODO: Remove this when the login window is sorted out
 const DEFAULT_USER_ID = '6fdf6ffc-ed77-94fa-407e-a7b86ed9e59d'; // John Doe
+
+// Constants for localStorage keys
+const USER_GUID_KEY = 'userGUID';
 
 class ActivityList {
     constructor(containerElement) {
@@ -14,7 +17,21 @@ class ActivityList {
         this.isLoading = false;
         this.hasError = false;
         this.errorMessage = '';
-        this.userId = DEFAULT_USER_ID;
+
+        // Get user ID from localStorage or redirect to login if not found
+        let userGUID = localStorage.getItem(USER_GUID_KEY);
+        console.log('Check userGUID from local storage: ', userGUID);
+        if (!userGUID) {
+            // If there is no userGUID in localStorage, we need to present the login window to the user
+            // The user then enters detail and we build a new user on the server and store the userGUID in localStorage
+            // Temp hack to use default user for now
+            userGUID = DEFAULT_USER_ID;
+            console.log('No user GUID found in localStorage, switching to default user: ', userGUID);
+        }
+
+        this.userId = userGUID;
+        console.log('The suer ID now is userGUID: ', userGUID);
+
     }
 
     // Show loading state
