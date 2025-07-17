@@ -1,0 +1,27 @@
+<template id="activity-list-loading">
+    <div class="loading-indicator">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>Loading activities...</span>
+    </div>
+</template>
+
+<template id="activity-list-error">
+    <div class="error-message">
+        <i class="fas fa-exclamation-circle"></i>
+        <span class="error-text"></span>
+        <button class="retry-button">Retry</button>
+    </div>
+</template>
+
+<template id="activity-list-empty">
+    <div class="empty-state">
+        <i class="fas fa-info-circle"></i>
+        <p>No Activity Yet. Click the "+" button to add your first contact.</p>
+    </div>
+</template>
+
+<template id="activity-list-error-toast">
+    <div class="error-toast">
+        <span class="toast-message"></span>
+    </div>
+</template>

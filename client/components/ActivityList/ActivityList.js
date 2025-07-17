@@ -20,36 +20,83 @@ class ActivityList {
         this.userId = userGUID;
         console.log('Using userGUID from localStorage:', userGUID);
 
+        // Initialize template elements
+        this.initializeTemplates();
+    }
+
+    // Initialize template elements from the loaded templates
+    initializeTemplates() {
+        // Clone templates and append to container
+        const loadingTemplate = document.querySelector('#activity-list-loading');
+        const errorTemplate = document.querySelector('#activity-list-error');
+        const emptyTemplate = document.querySelector('#activity-list-empty');
+
+        if (loadingTemplate) {
+            this.loadingElement = loadingTemplate.content.cloneNode(true).firstElementChild;
+            this.loadingElement.style.display = 'none';
+            this.containerElement.appendChild(this.loadingElement);
+        }
+
+        if (errorTemplate) {
+            this.errorElement = errorTemplate.content.cloneNode(true).firstElementChild;
+            this.errorElement.style.display = 'none';
+            this.containerElement.appendChild(this.errorElement);
+        }
+
+        if (emptyTemplate) {
+            this.emptyElement = emptyTemplate.content.cloneNode(true).firstElementChild;
+            this.emptyElement.style.display = 'none';
+            this.containerElement.appendChild(this.emptyElement);
+        }
+
+        // Create activities container for dynamic content
+        this.activitiesContainer = document.createElement('div');
+        this.activitiesContainer.className = 'activities-container';
+        this.containerElement.appendChild(this.activitiesContainer);
     }
 
     // Show loading state
     showLoading() {
         this.isLoading = true;
-        this.containerElement.innerHTML = `
-            <div class="loading-indicator">
-                <i class="fas fa-spinner fa-spin"></i>
-                <span>Loading activities...</span>
-            </div>
-        `;
+        this.hideAllStates();
+        if (this.loadingElement) {
+            this.loadingElement.style.display = 'block';
+        }
     }
 
     // Show error state
     showError(message) {
         this.hasError = true;
         this.errorMessage = message;
-        this.containerElement.innerHTML = `
-            <div class="error-message">
-                <i class="fas fa-exclamation-circle"></i>
-                <span>${message}</span>
-                <button class="retry-button">Retry</button>
-            </div>
-        `;
-
-        // Add retry button handler
-        const retryButton = this.containerElement.querySelector('.retry-button');
-        if (retryButton) {
-            retryButton.addEventListener('click', () => this.fetchData());
+        this.hideAllStates();
+        
+        if (this.errorElement) {
+            // Update error message
+            const errorText = this.errorElement.querySelector('.error-text');
+            if (errorText) {
+                errorText.textContent = message;
+            }
+            
+            // Show error element
+            this.errorElement.style.display = 'block';
+            
+            // Add retry button handler
+            const retryButton = this.errorElement.querySelector('.retry-button');
+            if (retryButton) {
+                // Remove existing listeners to prevent duplicates
+                retryButton.replaceWith(retryButton.cloneNode(true));
+                const newRetryButton = this.errorElement.querySelector('.retry-button');
+                newRetryButton.addEventListener('click', () => this.fetchData());
+            }
         }
+    }
+
+    // Hide all state elements
+    hideAllStates() {
+        if (this.loadingElement) this.loadingElement.style.display = 'none';
+        if (this.errorElement) this.errorElement.style.display = 'none';
+        if (this.emptyElement) this.emptyElement.style.display = 'none';
+        if (this.activitiesContainer) this.activitiesContainer.innerHTML = '';
     }
 
     // Fetch data from server
@@ -66,12 +113,13 @@ class ActivityList {
 
             // Use cached data if it's fresh enough and not forcing refresh
             if (!forceRefresh && cachedData && dataAge < maxAge) {
-                console.log('Using cached activities data');
+                console.log(`Using cached activities data from localStorage: ${cachedData}`);
                 this.activities = JSON.parse(cachedData);
             } else {
                 console.log('Fetching fresh activities data');
                 // Fetch activities from server as they already include contact information
                 const activities = await ApiService.fetchActivities(this.userId);
+                console.log('Fetched activities:', activities);
 
                 // Store activities
                 this.activities = activities;
@@ -120,16 +168,8 @@ class ActivityList {
             await this.fetchData();
         } catch (error) {
             console.error('Error adding activity:', error);
-            // Show error message but don't disrupt the UI
-            const errorToast = document.createElement('div');
-            errorToast.className = 'error-toast';
-            errorToast.textContent = 'Failed to add activity';
-            document.body.appendChild(errorToast);
-
-            // Remove after 3 seconds
-            setTimeout(() => {
-                errorToast.remove();
-            }, 3000);
+            // Show error toast using template
+            this.showErrorToast('Failed to add activity');
         }
     }
 
@@ -163,25 +203,44 @@ class ActivityList {
         await this.fetchData();
     }
 
+    // Show error toast using template
+    showErrorToast(message) {
+        const toastTemplate = document.querySelector('#activity-list-error-toast');
+        if (toastTemplate) {
+            const toastElement = toastTemplate.content.cloneNode(true).firstElementChild;
+            const messageSpan = toastElement.querySelector('.toast-message');
+            if (messageSpan) {
+                messageSpan.textContent = message;
+            }
+            
+            document.body.appendChild(toastElement);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toastElement.remove();
+            }, 3000);
+        }
+    }
+
     // Render the list with filtered activities
     render(searchTerm = '') {
-        this.containerElement.innerHTML = '';
+        this.hideAllStates();
         const filteredActivities = this.filterActivities(searchTerm);
 
         if (filteredActivities.length === 0) {
-            // Show empty state message when there are no activities
-            this.containerElement.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-info-circle"></i>
-                    <p>No Activity Yet. Click the "+" button to add your first contact.</p>
-                </div>
-            `;
+            // Show empty state
+            if (this.emptyElement) {
+                this.emptyElement.style.display = 'block';
+            }
         } else {
-            // Render activities
-            filteredActivities.forEach(activity => {
-                const listItem = new ActivityListItem(activity);
-                this.containerElement.appendChild(listItem.render());
-            });
+            // Render activities in the activities container
+            if (this.activitiesContainer) {
+                this.activitiesContainer.innerHTML = '';
+                filteredActivities.forEach(activity => {
+                    const listItem = new ActivityListItem(activity);
+                    this.activitiesContainer.appendChild(listItem.render());
+                });
+            }
         }
     }
 

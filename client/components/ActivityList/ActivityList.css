@@ -89,6 +89,13 @@
     margin: 0 auto;
 }
 
+/* Activities container for dynamic content */
+.activities-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
 @keyframes fadeInOut {
     0% { opacity: 0; transform: translate(-50%, 20px); }
     10% { opacity: 1; transform: translate(-50%, 0); }
