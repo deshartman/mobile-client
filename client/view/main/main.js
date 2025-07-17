@@ -1,23 +1,40 @@
 import ActivityList from '../../components/ActivityList/ActivityList.js';
 
-// Function to load template
-async function loadTemplate() {
+// Function to load templates
+async function loadTemplates() {
     try {
-        const response = await fetch('/components/ActivityListItem/ActivityListItem.html');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        // Load ActivityListItem template
+        const itemResponse = await fetch('/components/ActivityListItem/ActivityListItem.html');
+        if (!itemResponse.ok) {
+            throw new Error(`HTTP error! status: ${itemResponse.status}`);
         }
-        const html = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const template = doc.querySelector('#activity-list-item');
-        if (!template) {
-            throw new Error('Template not found in HTML');
+        const itemHtml = await itemResponse.text();
+        const itemParser = new DOMParser();
+        const itemDoc = itemParser.parseFromString(itemHtml, 'text/html');
+        const itemTemplate = itemDoc.querySelector('#activity-list-item');
+        if (!itemTemplate) {
+            throw new Error('ActivityListItem template not found in HTML');
         }
-        document.body.appendChild(template);
+        document.body.appendChild(itemTemplate);
+
+        // Load ActivityList templates
+        const listResponse = await fetch('/components/ActivityList/ActivityList.html');
+        if (!listResponse.ok) {
+            throw new Error(`HTTP error! status: ${listResponse.status}`);
+        }
+        const listHtml = await listResponse.text();
+        const listParser = new DOMParser();
+        const listDoc = listParser.parseFromString(listHtml, 'text/html');
+        
+        // Append all ActivityList templates
+        const templates = listDoc.querySelectorAll('template');
+        templates.forEach(template => {
+            document.body.appendChild(template);
+        });
+
         return true;
     } catch (error) {
-        console.error('Error loading template:', error);
+        console.error('Error loading templates:', error);
         return false;
     }
 }
@@ -37,10 +54,10 @@ function isDataStale() {
 // Initialize application
 async function initializeApp() {
     try {
-        // Wait for template to load
-        const templateLoaded = await loadTemplate();
-        if (!templateLoaded) {
-            throw new Error('Failed to load template');
+        // Wait for templates to load
+        const templatesLoaded = await loadTemplates();
+        if (!templatesLoaded) {
+            throw new Error('Failed to load templates');
         }
 
         // Initialize activity list
