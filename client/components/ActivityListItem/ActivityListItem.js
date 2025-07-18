@@ -192,11 +192,11 @@ class ActivityListItem {
         time.textContent = this.formatDateTime(this.activity.datetime);
 
         const duration = this.element.querySelector('.list-item-duration');
-        // Hide duration for Contact type activities
-        if (this.activity.type === 'Contact') {
-            duration.style.display = 'none';
-        } else {
+        // Only show duration for Phone, SIP, and Client type activities
+        if (this.activity.type === 'Phone' || this.activity.type === 'SIP' || this.activity.type === 'Client') {
             duration.textContent = this.formatDuration(this.activity.duration);
+        } else {
+            duration.style.display = 'none';
         }
 
         this.attachEventListeners();

@@ -69,17 +69,17 @@ class ActivityList {
         this.hasError = true;
         this.errorMessage = message;
         this.hideAllStates();
-        
+
         if (this.errorElement) {
             // Update error message
             const errorText = this.errorElement.querySelector('.error-text');
             if (errorText) {
                 errorText.textContent = message;
             }
-            
+
             // Show error element
             this.errorElement.style.display = 'block';
-            
+
             // Add retry button handler
             const retryButton = this.errorElement.querySelector('.retry-button');
             if (retryButton) {
@@ -212,9 +212,9 @@ class ActivityList {
             if (messageSpan) {
                 messageSpan.textContent = message;
             }
-            
+
             document.body.appendChild(toastElement);
-            
+
             // Remove after 3 seconds
             setTimeout(() => {
                 toastElement.remove();
