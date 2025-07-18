@@ -15,6 +15,8 @@ class ActivityListItem {
             case 'SIP':
                 return 'fas fa-phone-alt';
             case 'Client':
+                return 'fas fa-desktop';
+            case 'Contact':
                 return 'fas fa-user';
             default:
                 return 'fas fa-question';
@@ -141,6 +143,9 @@ class ActivityListItem {
                 case 'WhatsApp':
                     window.location.href = `view/whatsapp/whatsapp.html?number=${identity.value}`;
                     break;
+                case 'Contact':
+                    this.handleInfoClick(event);
+                    break;
             }
         }
     }
@@ -187,7 +192,12 @@ class ActivityListItem {
         time.textContent = this.formatDateTime(this.activity.datetime);
 
         const duration = this.element.querySelector('.list-item-duration');
-        duration.textContent = this.formatDuration(this.activity.duration);
+        // Hide duration for Contact type activities
+        if (this.activity.type === 'Contact') {
+            duration.style.display = 'none';
+        } else {
+            duration.textContent = this.formatDuration(this.activity.duration);
+        }
 
         this.attachEventListeners();
 

@@ -141,7 +141,7 @@ async function handleSubmit() {
         // Only create activity for NEW contacts, not edits
         if (isNewContact) {
             const newActivity = {
-                type: 'Phone',
+                type: 'Contact',
                 datetime: new Date().toISOString(),
                 duration: 0, // 0 duration indicates contact addition
                 identityValue: primaryPhone,

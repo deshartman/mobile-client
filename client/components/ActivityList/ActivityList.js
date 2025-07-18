@@ -154,7 +154,7 @@ class ActivityList {
         try {
             // Create new activity
             const newActivity = {
-                type: 'Phone',
+                type: 'Contact',
                 datetime: new Date().toISOString(),
                 duration: 0,
                 identityValue: phoneNumber,
