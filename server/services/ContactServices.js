@@ -33,7 +33,8 @@ class ContactService extends EventEmitter {
         // User IDs from UserServices.js
         const userIds = [
             '6fdf6ffc-ed77-94fa-407e-a7b86ed9e59d',  // John Doe
-            '6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx'   // Jane Smith
+            '6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx',  // Jane Smith
+            '14310e20-4416-40bc-aeb8-daf093f2ed90'   // Des Hartman
         ];
 
         // For each user, create a contacts map
@@ -114,6 +115,31 @@ class ContactService extends EventEmitter {
                 });
             }
 
+            // Add contacts for Des Hartman
+            if (userId === '14310e20-4416-40bc-aeb8-daf093f2ed90') {
+                contactsMap.set('contact-7', {
+                    guid: 'contact-7',
+                    firstName: 'Alice',
+                    lastName: 'Johnson',
+                    company: 'Tech Solutions',
+                    identities: [
+                        { type: 'Phone', value: '+1 (555) 111-2222' },
+                        { type: 'WhatsApp', value: '+1 (555) 111-2222' }
+                    ]
+                });
+
+                contactsMap.set('contact-8', {
+                    guid: 'contact-8',
+                    firstName: 'Bob',
+                    lastName: 'Williams',
+                    company: 'Digital Agency',
+                    identities: [
+                        { type: 'Phone', value: '+1 (555) 333-4444' },
+                        { type: 'Message', value: '+1 (555) 333-4444' }
+                    ]
+                });
+            }
+
             userContacts.set('contacts', contactsMap);
             this.data.set(userId, userContacts);
         });
@@ -128,7 +154,8 @@ class ContactService extends EventEmitter {
         // User IDs from UserServices.js
         const userIds = [
             '6fdf6ffc-ed77-94fa-407e-a7b86ed9e59d',  // John Doe
-            '6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx'   // Jane Smith
+            '6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx',  // Jane Smith
+            '14310e20-4416-40bc-aeb8-daf093f2ed90'   // Des Hartman
         ];
 
         // For each user, create activities
@@ -213,8 +240,57 @@ class ContactService extends EventEmitter {
                 });
             }
 
+            // Add activities for Des Hartman
+            if (userId === '14310e20-4416-40bc-aeb8-daf093f2ed90') {
+                userActivities.push({
+                    id: uuidv4(),
+                    type: 'Phone',
+                    datetime: '2025-07-17T09:30:00',
+                    duration: 15,
+                    identityValue: '+1 (555) 111-2222',
+                    contactGuid: 'contact-7'
+                });
+
+                userActivities.push({
+                    id: uuidv4(),
+                    type: 'WhatsApp',
+                    datetime: '2025-07-17T08:15:00',
+                    duration: 8,
+                    identityValue: '+1 (555) 111-2222',
+                    contactGuid: 'contact-7'
+                });
+
+                userActivities.push({
+                    id: uuidv4(),
+                    type: 'Message',
+                    datetime: '2025-07-16T16:45:00',
+                    duration: 5,
+                    identityValue: '+1 (555) 333-4444',
+                    contactGuid: 'contact-8'
+                });
+            }
+
             this.activities.set(userId, userActivities);
         });
+    }
+
+    /**
+     * Ensure user data structures exist for a given userGUID
+     * @param {string} userGUID - User GUID to ensure data structures for
+     */
+    ensureUserDataExists(userGUID) {
+        if (!this.data.has(userGUID)) {
+            console.log(`[ContactService] Creating data structures for new user: ${userGUID}`);
+            const userContacts = new Map();
+            const contactsMap = new Map();
+            userContacts.set('contacts', contactsMap);
+            this.data.set(userGUID, userContacts);
+        }
+
+        if (!this.activities.has(userGUID)) {
+            console.log(`[ContactService] Creating activities structure for new user: ${userGUID}`);
+            this.activities.set(userGUID, []);
+        }
     }
 
     /**
@@ -224,6 +300,7 @@ class ContactService extends EventEmitter {
      * @returns {Map} Map of contacts
      */
     getContacts(userGUID) {
+        this.ensureUserDataExists(userGUID);
         this.contacts = this.data.get(userGUID).get('contacts');
         return this.contacts;
     }
@@ -236,6 +313,7 @@ class ContactService extends EventEmitter {
      * @returns {Object} Contact object
      */
     getContact(userGUID, contactGUID) {
+        this.ensureUserDataExists(userGUID);
         this.contacts = this.data.get(userGUID).get('contacts');
         return this.contacts.get(contactGUID);
     }
@@ -248,6 +326,7 @@ class ContactService extends EventEmitter {
      * @returns {Object} Created contact object
      */
     createContact(userGUID, contact) {
+        this.ensureUserDataExists(userGUID);
         this.contacts = this.data.get(userGUID).get('contacts');
         // Create a new contact GUID and add the contact data
         contact.guid = `contact-${Date.now()}`;
@@ -265,6 +344,7 @@ class ContactService extends EventEmitter {
      * @returns {string} Updated contact GUID
      */
     updateContact(userGUID, contactGUID, contact) {
+        this.ensureUserDataExists(userGUID);
         this.contacts = this.data.get(userGUID).get('contacts');
         // update the particular contact
         this.contacts.set(contactGUID, contact);
@@ -280,6 +360,7 @@ class ContactService extends EventEmitter {
      * @returns {boolean} True if the contact was deleted
      */
     deleteContact(userGUID, contactGUID) {
+        this.ensureUserDataExists(userGUID);
         this.contacts = this.data.get(userGUID).get('contacts');
         const deleted = this.contacts.delete(contactGUID);
         if (deleted) {
@@ -294,17 +375,26 @@ class ContactService extends EventEmitter {
      * @returns {Array} Array of activities
      */
     getActivities(userGUID) {
+        console.log(`[ContactService] getActivities called for userGUID: ${userGUID}`);
+        this.ensureUserDataExists(userGUID);
+        
         const activities = this.activities.get(userGUID) || [];
         const contacts = this.data.get(userGUID)?.get('contacts');
+        
+        console.log(`[ContactService] Found ${activities.length} activities for user ${userGUID}`);
+        console.log(`[ContactService] Raw activities:`, activities);
 
         // Enrich activities with contact information
-        return activities.map(activity => {
+        const enrichedActivities = activities.map(activity => {
             const contact = contacts?.get(activity.contactGuid);
             return {
                 ...activity,
                 contact: contact || null
             };
         });
+        
+        console.log(`[ContactService] Returning ${enrichedActivities.length} enriched activities`);
+        return enrichedActivities;
     }
 
     /**
@@ -315,6 +405,7 @@ class ContactService extends EventEmitter {
      * @returns {Object} Added activity object
      */
     addActivity(userGUID, activity) {
+        this.ensureUserDataExists(userGUID);
         const userActivities = this.activities.get(userGUID) || [];
 
         // Add ID to activity

@@ -19,6 +19,20 @@ app.use(express.static(path.join(__dirname, '../client'))); // Serve static file
 
 const { logOut, logError } = require('./utils/logger');
 
+// General request logging middleware
+app.use((req, res, next) => {
+    // Only log API requests (not static file requests)
+    if (req.path.startsWith('/api/') || 
+        req.path.startsWith('/contacts/') || 
+        req.path.startsWith('/activities/') || 
+        req.path.startsWith('/users/') || 
+        req.path.startsWith('/voice-token') ||
+        req.path.startsWith('/health')) {
+        logOut('REQUEST', `${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`);
+    }
+    next();
+});
+
 // Import Services
 const { ContactService } = require('./services/ContactServices');
 const { UserService } = require('./services/UserServices');
@@ -41,122 +55,194 @@ app.get('/health', (req, res) => {
 
 // Contact Endpoints
 app.get('/contacts/:userGuid', (req, res) => {
+    const userGuid = req.params.userGuid;
+    logOut('API', `GET /contacts/${userGuid} - Request received`);
+    
     try {
-        const contacts = contactService.getContacts(req.params.userGuid);
-        res.json(Array.from(contacts.values()));
+        const contacts = contactService.getContacts(userGuid);
+        const contactsArray = Array.from(contacts.values());
+        logOut('API', `GET /contacts/${userGuid} - Returning ${contactsArray.length} contacts`);
+        res.json(contactsArray);
     } catch (error) {
+        logError('API', `GET /contacts/${userGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 // Activities Endpoints
 app.get('/activities/:userGuid', (req, res) => {
+    const userGuid = req.params.userGuid;
+    logOut('API', `GET /activities/${userGuid} - Request received`);
+    
     try {
-        const activities = contactService.getActivities(req.params.userGuid);
+        const activities = contactService.getActivities(userGuid);
+        logOut('API', `GET /activities/${userGuid} - Returning ${activities ? activities.length : 0} activities`);
+        logOut('API', `GET /activities/${userGuid} - Response data: ${JSON.stringify(activities)}`);
         res.json(activities);
     } catch (error) {
+        logError('API', `GET /activities/${userGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.post('/activities/:userGuid', (req, res) => {
+    const userGuid = req.params.userGuid;
+    logOut('API', `POST /activities/${userGuid} - Request received with body: ${JSON.stringify(req.body)}`);
+    
     try {
-        const activity = contactService.addActivity(req.params.userGuid, req.body);
+        const activity = contactService.addActivity(userGuid, req.body);
+        logOut('API', `POST /activities/${userGuid} - Activity created: ${JSON.stringify(activity)}`);
         res.status(201).json(activity);
     } catch (error) {
+        logError('API', `POST /activities/${userGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.get('/contacts/:userGuid/:contactGuid', (req, res) => {
+    const { userGuid, contactGuid } = req.params;
+    logOut('API', `GET /contacts/${userGuid}/${contactGuid} - Request received`);
+    
     try {
-        const contact = contactService.getContact(req.params.userGuid, req.params.contactGuid);
+        const contact = contactService.getContact(userGuid, contactGuid);
         if (!contact) {
+            logOut('API', `GET /contacts/${userGuid}/${contactGuid} - Contact not found`);
             return res.status(404).json({ error: 'Contact not found' });
         }
+        logOut('API', `GET /contacts/${userGuid}/${contactGuid} - Returning contact: ${JSON.stringify(contact)}`);
         res.json(contact);
     } catch (error) {
+        logError('API', `GET /contacts/${userGuid}/${contactGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.post('/contacts/:userGuid', (req, res) => {
+    const userGuid = req.params.userGuid;
+    logOut('API', `POST /contacts/${userGuid} - Request received with body: ${JSON.stringify(req.body)}`);
+    
     try {
-        const contact = contactService.createContact(req.params.userGuid, req.body);
+        const contact = contactService.createContact(userGuid, req.body);
+        logOut('API', `POST /contacts/${userGuid} - Contact created: ${JSON.stringify(contact)}`);
         res.status(201).json(contact);
     } catch (error) {
+        logError('API', `POST /contacts/${userGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.put('/contacts/:userGuid/:contactGuid', (req, res) => {
+    const { userGuid, contactGuid } = req.params;
+    logOut('API', `PUT /contacts/${userGuid}/${contactGuid} - Request received with body: ${JSON.stringify(req.body)}`);
+    
     try {
-        const contact = contactService.updateContact(req.params.userGuid, req.params.contactGuid, req.body);
+        const contact = contactService.updateContact(userGuid, contactGuid, req.body);
+        logOut('API', `PUT /contacts/${userGuid}/${contactGuid} - Contact updated: ${JSON.stringify(contact)}`);
         res.json(contact);
     } catch (error) {
+        logError('API', `PUT /contacts/${userGuid}/${contactGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.delete('/contacts/:userGuid/:contactGuid', (req, res) => {
+    const { userGuid, contactGuid } = req.params;
+    logOut('API', `DELETE /contacts/${userGuid}/${contactGuid} - Request received`);
+    
     try {
-        const deleted = contactService.deleteContact(req.params.userGuid, req.params.contactGuid);
+        const deleted = contactService.deleteContact(userGuid, contactGuid);
         if (!deleted) {
+            logOut('API', `DELETE /contacts/${userGuid}/${contactGuid} - Contact not found`);
             return res.status(404).json({ error: 'Contact not found' });
         }
+        logOut('API', `DELETE /contacts/${userGuid}/${contactGuid} - Contact deleted successfully`);
         res.status(204).send();
     } catch (error) {
+        logError('API', `DELETE /contacts/${userGuid}/${contactGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 // User Endpoints
 app.post('/users', (req, res) => {
+    logOut('API', `POST /users - Request received with body: ${JSON.stringify(req.body)}`);
+    
     try {
-        const userGUID = userService.createUser(req.body);
-        res.status(201).json({ userGUID });
+        const { email } = req.body;
+        
+        // Check if user with this email already exists
+        const existingUser = userService.getUserByEmail(email);
+        
+        if (existingUser) {
+            // Return existing user GUID
+            logOut('API', `POST /users - Returning existing user GUID: ${existingUser.userGUID} for email: ${email}`);
+            res.status(200).json({ userGUID: existingUser.userGUID });
+        } else {
+            // Create new user
+            const userGUID = userService.createUser(req.body);
+            logOut('API', `POST /users - User created with GUID: ${userGUID}`);
+            res.status(201).json({ userGUID });
+        }
     } catch (error) {
+        logError('API', `POST /users - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.get('/users/:userGuid', (req, res) => {
+    const userGuid = req.params.userGuid;
+    logOut('API', `GET /users/${userGuid} - Request received`);
+    
     try {
-        const user = userService.getUser(req.params.userGuid);
+        const user = userService.getUser(userGuid);
         if (!user) {
+            logOut('API', `GET /users/${userGuid} - User not found`);
             return res.status(404).json({ error: 'User not found' });
         }
+        logOut('API', `GET /users/${userGuid} - Returning user: ${JSON.stringify(user)}`);
         res.json(user);
     } catch (error) {
+        logError('API', `GET /users/${userGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.put('/users/:userGuid', (req, res) => {
+    const userGuid = req.params.userGuid;
+    logOut('API', `PUT /users/${userGuid} - Request received with body: ${JSON.stringify(req.body)}`);
+    
     try {
-        const user = userService.updateUser(req.params.userGuid, req.body);
+        const user = userService.updateUser(userGuid, req.body);
+        logOut('API', `PUT /users/${userGuid} - User updated: ${JSON.stringify(user)}`);
         res.json(user);
     } catch (error) {
+        logError('API', `PUT /users/${userGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 app.delete('/users/:userGuid', (req, res) => {
+    const userGuid = req.params.userGuid;
+    logOut('API', `DELETE /users/${userGuid} - Request received`);
+    
     try {
-        userService.deleteUser(req.params.userGuid);
+        userService.deleteUser(userGuid);
+        logOut('API', `DELETE /users/${userGuid} - User deleted successfully`);
         res.status(204).send();
     } catch (error) {
+        logError('API', `DELETE /users/${userGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
 // Twilio Voice Token endpoint
 app.get('/voice-token', (req, res) => {
+    const userGuid = req.query.guid;
+    logOut('API', `GET /voice-token - Request received for userGuid: ${userGuid}`);
+    
     try {
-        // Get guid from query parameter
-        const userGuid = req.query.guid;
-
         if (!userGuid) {
+            logOut('API', 'GET /voice-token - Missing required parameter: guid');
             return res.status(400).json({ error: 'Missing required parameter: guid' });
         }
 
@@ -164,6 +250,7 @@ app.get('/voice-token', (req, res) => {
         const user = userService.getUser(userGuid);
 
         if (!user) {
+            logOut('API', `GET /voice-token - User not found: ${userGuid}`);
             return res.status(404).json({ error: 'User not found' });
         }
 
@@ -185,8 +272,11 @@ app.get('/voice-token', (req, res) => {
         token.addGrant(voiceGrant);
 
         // Return the token as JSON
-        res.json({ token: token.toJwt() });
+        const tokenJwt = token.toJwt();
+        logOut('API', `GET /voice-token - Token generated successfully for userGuid: ${userGuid}`);
+        res.json({ token: tokenJwt });
     } catch (error) {
+        logError('API', `GET /voice-token - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
