@@ -16,15 +16,20 @@ class ApiService {
      */
     async fetchContacts(userId) {
         try {
+            console.log(`[ApiService] Making GET request to /contacts/${userId}`);
             const response = await fetch(`${this.baseUrl}/contacts/${userId}`);
 
+            console.log(`[ApiService] GET /contacts/${userId} - Response status: ${response.status}`);
+            
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            return await response.json();
+            const data = await response.json();
+            console.log(`[ApiService] GET /contacts/${userId} - Response data:`, data);
+            return data;
         } catch (error) {
-            console.error('Error fetching contacts:', error);
+            console.error(`[ApiService] Error fetching contacts for user ${userId}:`, error);
             throw error;
         }
     }
@@ -37,15 +42,20 @@ class ApiService {
      */
     async fetchActivities(userId) {
         try {
+            console.log(`[ApiService] Making GET request to /activities/${userId}`);
             const response = await fetch(`${this.baseUrl}/activities/${userId}`);
 
+            console.log(`[ApiService] GET /activities/${userId} - Response status: ${response.status}`);
+            
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            return await response.json();
+            const data = await response.json();
+            console.log(`[ApiService] GET /activities/${userId} - Response data:`, data);
+            return data;
         } catch (error) {
-            console.error('Error fetching activities:', error);
+            console.error(`[ApiService] Error fetching activities for user ${userId}:`, error);
             throw error;
         }
     }

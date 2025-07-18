@@ -15,10 +15,10 @@ class ActivityList {
         this.hasError = false;
         this.errorMessage = '';
 
-        // Get user ID from localStorage (we know it exists because index.html already checked)
-        const userGUID = localStorage.getItem(USER_GUID_KEY);
+        // Get user ID from sessionStorage (we know it exists because index.html already checked)
+        const userGUID = sessionStorage.getItem(USER_GUID_KEY);
         this.userId = userGUID;
-        console.log('Using userGUID from localStorage:', userGUID);
+        console.log('Using userGUID from sessionStorage:', userGUID);
 
         // Initialize template elements
         this.initializeTemplates();

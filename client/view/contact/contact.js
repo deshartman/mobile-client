@@ -72,7 +72,7 @@ function handleImageUpload(event) {
 }
 
 // Function to handle form submission
-function handleSubmit() {
+async function handleSubmit() {
     const firstName = document.getElementById('firstName').value;
     const lastName = document.getElementById('lastName').value;
     const company = document.getElementById('companyName').value;
@@ -95,24 +95,96 @@ function handleSubmit() {
     // Get the primary phone number (first phone number)
     const primaryPhone = identities.find(id => id.type === IdentityType.Phone).value;
 
-    // Create or update contact in localStorage
-    const contacts = JSON.parse(localStorage.getItem('contacts') || '{}');
+    // Determine if this is a new contact or editing existing
+    const existingGuid = getUrlParams().guid;
+    const isNewContact = !existingGuid;
+    
+    // Create contact object
     const contact = {
-        guid: getUrlParams().guid || `contact-${Date.now()}`,
+        guid: existingGuid || `contact-${Date.now()}`,
         firstName,
         lastName,
         company,
         identities
     };
-    contacts[primaryPhone] = contact;
-    localStorage.setItem('contacts', JSON.stringify(contacts));
 
-    // Dispatch custom event for contact update
-    window.dispatchEvent(new CustomEvent(CONTACT_UPDATED_EVENT, {
-        detail: { contact, primaryPhone }
-    }));
+    try {
+        // Get userGUID from sessionStorage
+        const userGUID = sessionStorage.getItem('userGUID');
+        if (!userGUID) {
+            alert('User not logged in');
+            return false;
+        }
 
-    return true;
+        console.log(`[Contact] ${isNewContact ? 'Creating new' : 'Updating existing'} contact:`, contact);
+
+        // Choose appropriate HTTP method and endpoint
+        const method = isNewContact ? 'POST' : 'PUT';
+        const endpoint = isNewContact ? `/contacts/${userGUID}` : `/contacts/${userGUID}/${contact.guid}`;
+
+        // Save contact to server
+        const response = await fetch(endpoint, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(contact)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
+
+        const savedContact = await response.json();
+        console.log('[Contact] Contact saved to server:', savedContact);
+
+        // Only create activity for NEW contacts, not edits
+        if (isNewContact) {
+            const newActivity = {
+                type: 'Phone',
+                datetime: new Date().toISOString(),
+                duration: 0, // 0 duration indicates contact addition
+                identityValue: primaryPhone,
+                contactGuid: savedContact.guid
+            };
+
+            console.log('[Contact] Creating activity for new contact:', newActivity);
+
+            // Send activity to server
+            const activityResponse = await fetch(`/activities/${userGUID}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(newActivity)
+            });
+
+            if (activityResponse.ok) {
+                const savedActivity = await activityResponse.json();
+                console.log('[Contact] Activity created:', savedActivity);
+            } else {
+                console.warn('[Contact] Failed to create activity, but contact was saved');
+            }
+        } else {
+            console.log('[Contact] Existing contact updated, no activity created');
+        }
+
+        // Also save to sessionStorage as backup/cache
+        const contacts = JSON.parse(sessionStorage.getItem('contacts') || '{}');
+        contacts[primaryPhone] = savedContact;
+        sessionStorage.setItem('contacts', JSON.stringify(contacts));
+
+        // Mark cache as stale so main page will refresh
+        sessionStorage.removeItem('activitiesCacheTimestamp');
+        
+        console.log('[Contact] Contact saved successfully, cache invalidated');
+        return true;
+
+    } catch (error) {
+        console.error('[Contact] Error saving contact:', error);
+        alert('Failed to save contact. Please try again.');
+        return false;
+    }
 }
 
 // Function to ensure an element exists
@@ -153,11 +225,24 @@ function populateForm() {
 function setupEventListeners() {
     // Handle back button with save
     const backButton = document.querySelector('.back-button');
-    backButton.addEventListener('click', (e) => {
+    backButton.addEventListener('click', async (e) => {
+        console.info('Back button clicked, saving contact...');
         e.preventDefault();
         e.stopPropagation();
-        if (handleSubmit()) {
-            window.location.href = '/index.html';
+        
+        // Show loading state
+        backButton.disabled = true;
+        backButton.textContent = 'Saving...';
+        
+        try {
+            const success = await handleSubmit();
+            if (success) {
+                window.location.href = '/index.html';
+            }
+        } finally {
+            // Reset button state
+            backButton.disabled = false;
+            backButton.innerHTML = '<i class="fas fa-arrow-left"></i>';
         }
     });
 

@@ -1,6 +1,6 @@
 import ApiService from '../../services/ApiService.js';
 
-// Constants for localStorage keys
+// Constants for sessionStorage keys
 const USER_GUID_KEY = 'userGUID';
 const USER_EMAIL_KEY = 'userEmail';
 const USER_NAME_KEY = 'userName';
@@ -10,8 +10,8 @@ const USER_NAME_KEY = 'userName';
  * @returns {boolean} True if user is logged in
  */
 function isUserLoggedIn() {
-    const userGUID = localStorage.getItem(USER_GUID_KEY);
-    const userEmail = localStorage.getItem(USER_EMAIL_KEY);
+    const userGUID = sessionStorage.getItem(USER_GUID_KEY);
+    const userEmail = sessionStorage.getItem(USER_EMAIL_KEY);
     return !!userGUID && !!userEmail;
 }
 
@@ -61,31 +61,31 @@ async function createNewUser(name, email) {
 }
 
 /**
- * Save user data to localStorage
+ * Save user data to sessionStorage
  * @param {string} userGUID - User's GUID
  * @param {string} email - User's email
  * @param {string} name - User's name
  */
-function saveUserToLocalStorage(userGUID, email, name) {
+function saveUserToSessionStorage(userGUID, email, name) {
     try {
-        console.log('Saving to localStorage:', { userGUID, email, name });
-        localStorage.setItem(USER_GUID_KEY, userGUID);
-        localStorage.setItem(USER_EMAIL_KEY, email);
-        localStorage.setItem(USER_NAME_KEY, name);
+        console.log('Saving to sessionStorage:', { userGUID, email, name });
+        sessionStorage.setItem(USER_GUID_KEY, userGUID);
+        sessionStorage.setItem(USER_EMAIL_KEY, email);
+        sessionStorage.setItem(USER_NAME_KEY, name);
 
         // Verify data was saved
-        const savedGUID = localStorage.getItem(USER_GUID_KEY);
-        const savedEmail = localStorage.getItem(USER_EMAIL_KEY);
-        const savedName = localStorage.getItem(USER_NAME_KEY);
+        const savedGUID = sessionStorage.getItem(USER_GUID_KEY);
+        const savedEmail = sessionStorage.getItem(USER_EMAIL_KEY);
+        const savedName = sessionStorage.getItem(USER_NAME_KEY);
 
-        console.log('Verified localStorage data:', {
+        console.log('Verified sessionStorage data:', {
             savedGUID,
             savedEmail,
             savedName,
             success: savedGUID === userGUID && savedEmail === email && savedName === name
         });
     } catch (error) {
-        console.error('Error saving to localStorage:', error);
+        console.error('Error saving to sessionStorage:', error);
     }
 }
 
@@ -117,8 +117,8 @@ async function handleFormSubmit(event) {
         // Create new user
         const userGUID = await createNewUser(name, email);
 
-        // Save user data to localStorage
-        saveUserToLocalStorage(userGUID, email, name);
+        // Save user data to sessionStorage
+        saveUserToSessionStorage(userGUID, email, name);
 
         // Navigate to main view
         navigateToMainView();
