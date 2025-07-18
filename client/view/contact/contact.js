@@ -10,6 +10,9 @@ const IdentityType = {
 // Custom event for contact updates
 const CONTACT_UPDATED_EVENT = 'contactUpdated';
 
+// Track if form has been touched
+let isFormTouched = false;
+
 // Function to get URL parameters
 function getUrlParams() {
     const params = new URLSearchParams(window.location.search);
@@ -86,10 +89,18 @@ async function handleSubmit() {
         }))
         .filter(identity => identity.value !== ''); // Only include non-empty identities
 
-    // Ensure there's at least one phone number
-    if (!identities.some(id => id.type === IdentityType.Phone && id.value)) {
-        alert('At least one phone number is required');
-        return false;
+    // Only validate if form has been touched
+    if (isFormTouched) {
+        // Ensure there's at least one phone number
+        if (!identities.some(id => id.type === IdentityType.Phone && id.value)) {
+            alert('At least one phone number is required');
+            return false;
+        }
+    }
+
+    // If not touched, just return true to allow navigation
+    if (!isFormTouched) {
+        return true;
     }
 
     // Get the primary phone number (first phone number)
@@ -187,6 +198,34 @@ async function handleSubmit() {
     }
 }
 
+// Function to mark form as touched
+function markFormAsTouched() {
+    isFormTouched = true;
+}
+
+// Function to clear all form fields and reset touched state
+function clearForm() {
+    // Clear all form fields
+    document.getElementById('firstName').value = '';
+    document.getElementById('lastName').value = '';
+    document.getElementById('companyName').value = '';
+    
+    // Clear all identity inputs
+    const identityInputs = document.querySelectorAll('.identity-input');
+    identityInputs.forEach(input => {
+        input.value = '';
+    });
+    
+    // Reset profile image
+    const profileImage = document.getElementById('profileImage');
+    const defaultIcon = document.querySelector('.default-icon');
+    profileImage.style.display = 'none';
+    defaultIcon.style.display = 'block';
+    
+    // Reset touched state
+    isFormTouched = false;
+}
+
 // Function to ensure an element exists
 function ensureElement(id) {
     const element = document.getElementById(id);
@@ -226,7 +265,7 @@ function setupEventListeners() {
     // Handle back button with save
     const backButton = document.querySelector('.back-button');
     backButton.addEventListener('click', async (e) => {
-        console.info('Back button clicked, saving contact...');
+        console.info('Back button clicked...');
         e.preventDefault();
         e.stopPropagation();
         
@@ -242,13 +281,40 @@ function setupEventListeners() {
         } finally {
             // Reset button state
             backButton.disabled = false;
-            backButton.innerHTML = '<i class="fas fa-arrow-left"></i>';
+            backButton.innerHTML = '<i class="fas fa-chevron-left"></i>';
         }
     });
 
-    // Handle image upload
+    // Handle clear button
+    const clearButton = document.querySelector('.clear-button');
+    clearButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        clearForm();
+    });
+
+    // Handle image upload (marks form as touched)
     const imageUpload = document.getElementById('imageUpload');
-    imageUpload.addEventListener('change', handleImageUpload);
+    imageUpload.addEventListener('change', (e) => {
+        markFormAsTouched();
+        handleImageUpload(e);
+    });
+
+    // Add touch tracking to all form inputs
+    const formInputs = ['firstName', 'lastName', 'companyName'];
+    formInputs.forEach(inputId => {
+        const input = document.getElementById(inputId);
+        if (input) {
+            input.addEventListener('input', markFormAsTouched);
+        }
+    });
+
+    // Add touch tracking to identity inputs (added dynamically)
+    document.addEventListener('input', (e) => {
+        if (e.target.classList.contains('identity-input')) {
+            markFormAsTouched();
+        }
+    });
 }
 
 // Initialize when DOM is loaded
