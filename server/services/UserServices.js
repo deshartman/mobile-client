@@ -50,6 +50,12 @@ class UserService extends EventEmitter {
             active: true,
             created: '2021-09-01T00:00:00Z',
         });
+        this.users.set('14310e20-4416-40bc-aeb8-daf093f2ed90', {
+            name: 'Des Hartman',
+            email: 'dhartman@twilio.com',
+            active: true,
+            created: '2021-09-01T00:00:00Z',
+        });
         // logOut('User Service', `Users: ${JSON.stringify(Object.fromEntries(this.users), null, 4)}`);
     }
 
@@ -83,6 +89,26 @@ class UserService extends EventEmitter {
         const user = this.users.get(userGUID);
         logOut('User Service', `User: ${JSON.stringify(user, null, 4)}`);
         return user;
+    }
+
+    /**
+     * Get user by email address
+     * 
+     * @param {string} email Email address to search for
+     * @returns {Object|null} Object with {userGUID, userData} if found, null if not found
+     */
+    getUserByEmail(email) {
+        logOut('User Service', `Getting user by email: ${email}`);
+        
+        for (const [userGUID, userData] of this.users.entries()) {
+            if (userData.email === email) {
+                logOut('User Service', `Found existing user for email ${email}: ${userGUID}`);
+                return { userGUID, userData };
+            }
+        }
+        
+        logOut('User Service', `No user found for email: ${email}`);
+        return null;
     }
 
     /**
