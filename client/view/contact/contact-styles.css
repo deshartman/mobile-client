@@ -43,6 +43,32 @@ body {
     text-align: center;
 }
 
+.error-banner {
+    background-color: #ff3b30;
+    color: white;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+.error-banner i {
+    font-size: 1rem;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .contact-form {
     padding: 2rem;
 }

@@ -93,7 +93,7 @@ async function handleSubmit() {
     if (isFormTouched) {
         // Ensure there's at least one phone number
         if (!identities.some(id => id.type === IdentityType.Phone && id.value)) {
-            alert('At least one phone number is required');
+            showError('At least one phone number is required');
             return false;
         }
     }
@@ -123,7 +123,7 @@ async function handleSubmit() {
         // Get userGUID from sessionStorage
         const userGUID = sessionStorage.getItem('userGUID');
         if (!userGUID) {
-            alert('User not logged in');
+            showError('User not logged in');
             return false;
         }
 
@@ -193,14 +193,34 @@ async function handleSubmit() {
 
     } catch (error) {
         console.error('[Contact] Error saving contact:', error);
-        alert('Failed to save contact. Please try again.');
+        showError('Failed to save contact. Please try again.');
         return false;
     }
+}
+
+// Function to show error banner
+function showError(message) {
+    const errorBanner = document.getElementById('errorBanner');
+    const errorMessage = document.getElementById('errorMessage');
+    errorMessage.textContent = message;
+    errorBanner.style.display = 'flex';
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        hideError();
+    }, 5000);
+}
+
+// Function to hide error banner
+function hideError() {
+    const errorBanner = document.getElementById('errorBanner');
+    errorBanner.style.display = 'none';
 }
 
 // Function to mark form as touched
 function markFormAsTouched() {
     isFormTouched = true;
+    hideError(); // Hide any existing errors when user starts editing
 }
 
 // Function to clear all form fields and reset touched state
@@ -221,6 +241,9 @@ function clearForm() {
     const defaultIcon = document.querySelector('.default-icon');
     profileImage.style.display = 'none';
     defaultIcon.style.display = 'block';
+    
+    // Hide any error messages
+    hideError();
     
     // Reset touched state
     isFormTouched = false;
