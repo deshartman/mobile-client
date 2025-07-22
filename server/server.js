@@ -11,8 +11,15 @@ const path = require('path');
 const { AccessToken } = require('twilio').jwt;
 const { VoiceGrant } = AccessToken;
 
+// Environment variables
+const SERVER_BASE_URL = process.env.SERVER_BASE_URL || "localhost";
+const PORT = process.env.PORT || 3000;
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_API_KEY = process.env.TWILIO_API_KEY;
+const TWILIO_API_SECRET = process.env.TWILIO_API_SECRET;
+const TWIML_APP_SID = process.env.TWIML_APP_SID;
+
 const app = express();
-let serverBaseUrl = process.env.SERVER_BASE_URL || "localhost"; // Store server URL
 
 app.use(express.json());    // For JSON payloads
 app.use(express.static(path.join(__dirname, '../client'))); // Serve static files from client directory
@@ -27,6 +34,7 @@ app.use((req, res, next) => {
         req.path.startsWith('/activities/') || 
         req.path.startsWith('/users/') || 
         req.path.startsWith('/voice-token') ||
+        req.path.startsWith('/voice/') ||
         req.path.startsWith('/health')) {
         logOut('REQUEST', `${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`);
     }
@@ -50,7 +58,7 @@ const userService = new UserService();
 
 // Health check endpoint moved to /health to not conflict with static file serving
 app.get('/health', (req, res) => {
-    res.send(`Server Running on ${serverBaseUrl}:${PORT}`);
+    res.send(`Server Running on ${SERVER_BASE_URL}:${PORT}`);
 });
 
 // Contact Endpoints
@@ -256,15 +264,15 @@ app.get('/voice-token', (req, res) => {
 
         // Create a Voice Grant for this token
         const voiceGrant = new VoiceGrant({
-            outgoingApplicationSid: process.env.TWIML_APP_SID,
+            outgoingApplicationSid: TWIML_APP_SID,
             incomingAllow: true, // Allow incoming calls
         });
 
         // Create an access token with the guid as the identity
         const token = new AccessToken(
-            process.env.ACCOUNT_SID,
-            process.env.TWILIO_API_KEY,
-            process.env.TWILIO_API_SECRET,
+            TWILIO_ACCOUNT_SID,
+            TWILIO_API_KEY,
+            TWILIO_API_SECRET,
             { identity: userGuid }
         );
 
@@ -277,6 +285,84 @@ app.get('/voice-token', (req, res) => {
         res.json({ token: tokenJwt });
     } catch (error) {
         logError('API', `GET /voice-token - Error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Voice API Endpoints
+app.post('/voice/token', (req, res) => {
+    const userGuid = req.body.userGuid;
+    logOut('API', `POST /voice/token - Request received for userGuid: ${userGuid}`);
+    
+    try {
+        if (!userGuid) {
+            logOut('API', 'POST /voice/token - Missing required parameter: userGuid');
+            return res.status(400).json({ error: 'Missing required parameter: userGuid' });
+        }
+
+        // Check if user exists
+        const user = userService.getUser(userGuid);
+
+        if (!user) {
+            logOut('API', `POST /voice/token - User not found: ${userGuid}`);
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Create a Voice Grant for this token
+        const voiceGrant = new VoiceGrant({
+            outgoingApplicationSid: TWIML_APP_SID,
+            incomingAllow: true, // Allow incoming calls
+        });
+
+        // Create an access token with the userGuid as the identity
+        const token = new AccessToken(
+            TWILIO_ACCOUNT_SID,
+            TWILIO_API_KEY,
+            TWILIO_API_SECRET,
+            { identity: userGuid }
+        );
+
+        // Add the voice grant to the token
+        token.addGrant(voiceGrant);
+
+        // Return the token as JSON
+        const tokenJwt = token.toJwt();
+        logOut('API', `POST /voice/token - Token generated successfully for userGuid: ${userGuid}`);
+        res.json({ token: tokenJwt });
+    } catch (error) {
+        logError('API', `POST /voice/token - Error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/voice/dial', (req, res) => {
+    const { userGuid, phoneNumber } = req.body;
+    logOut('API', `POST /voice/dial - Request received for userGuid: ${userGuid}, phoneNumber: ${phoneNumber}`);
+    
+    try {
+        if (!userGuid || !phoneNumber) {
+            logOut('API', 'POST /voice/dial - Missing required parameters: userGuid and/or phoneNumber');
+            return res.status(400).json({ error: 'Missing required parameters: userGuid and phoneNumber' });
+        }
+
+        // Check if user exists
+        const user = userService.getUser(userGuid);
+
+        if (!user) {
+            logOut('API', `POST /voice/dial - User not found: ${userGuid}`);
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Placeholder for voice dial logic
+        logOut('API', `POST /voice/dial - Dial request processed for userGuid: ${userGuid}, phoneNumber: ${phoneNumber}`);
+        res.json({ 
+            success: true, 
+            message: 'Voice dial endpoint placeholder',
+            userGuid: userGuid,
+            phoneNumber: phoneNumber
+        });
+    } catch (error) {
+        logError('API', `POST /voice/dial - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
@@ -299,7 +385,6 @@ app.get('/voice-token', (req, res) => {
  * @returns {http.Server} Express server instance
  * @throws {Error} If server fails to start for reasons other than port in use
  */
-let PORT = process.env.PORT || 3000;
 
 const startServer = (port) => {
     // logOut('Server', `Starting server on port ${port}`);
