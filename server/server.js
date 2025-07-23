@@ -26,20 +26,6 @@ app.use(express.static(path.join(__dirname, '../client'))); // Serve static file
 
 const { logOut, logError } = require('./utils/logger');
 
-// General request logging middleware
-app.use((req, res, next) => {
-    // Only log API requests (not static file requests)
-    if (req.path.startsWith('/api/') || 
-        req.path.startsWith('/contacts/') || 
-        req.path.startsWith('/activities/') || 
-        req.path.startsWith('/users/') || 
-        req.path.startsWith('/voice-token') ||
-        req.path.startsWith('/voice/') ||
-        req.path.startsWith('/health')) {
-        logOut('REQUEST', `${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`);
-    }
-    next();
-});
 
 // Import Services
 const { ContactService } = require('./services/ContactServices');
@@ -243,51 +229,6 @@ app.delete('/users/:userGuid', (req, res) => {
     }
 });
 
-// Twilio Voice Token endpoint
-app.get('/voice-token', (req, res) => {
-    const userGuid = req.query.guid;
-    logOut('API', `GET /voice-token - Request received for userGuid: ${userGuid}`);
-    
-    try {
-        if (!userGuid) {
-            logOut('API', 'GET /voice-token - Missing required parameter: guid');
-            return res.status(400).json({ error: 'Missing required parameter: guid' });
-        }
-
-        // Check if user exists
-        const user = userService.getUser(userGuid);
-
-        if (!user) {
-            logOut('API', `GET /voice-token - User not found: ${userGuid}`);
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Create a Voice Grant for this token
-        const voiceGrant = new VoiceGrant({
-            outgoingApplicationSid: TWIML_APP_SID,
-            incomingAllow: true, // Allow incoming calls
-        });
-
-        // Create an access token with the guid as the identity
-        const token = new AccessToken(
-            TWILIO_ACCOUNT_SID,
-            TWILIO_API_KEY,
-            TWILIO_API_SECRET,
-            { identity: userGuid }
-        );
-
-        // Add the voice grant to the token
-        token.addGrant(voiceGrant);
-
-        // Return the token as JSON
-        const tokenJwt = token.toJwt();
-        logOut('API', `GET /voice-token - Token generated successfully for userGuid: ${userGuid}`);
-        res.json({ token: tokenJwt });
-    } catch (error) {
-        logError('API', `GET /voice-token - Error: ${error.message}`);
-        res.status(500).json({ error: error.message });
-    }
-});
 
 // Voice API Endpoints
 app.post('/voice/token', (req, res) => {
