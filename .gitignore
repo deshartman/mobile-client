@@ -3,3 +3,14 @@ server/.env
 server/pnpm-lock.yaml
 server/package-lock.json
 CLAUDE-VoiceSDK.md
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
+# Environment files - ALL .env* files
+.env*

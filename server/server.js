@@ -8,16 +8,10 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const { AccessToken } = require('twilio').jwt;
-const { VoiceGrant } = AccessToken;
 
 // Environment variables
 const SERVER_BASE_URL = process.env.SERVER_BASE_URL || "localhost";
 const PORT = process.env.PORT || 3000;
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const TWILIO_API_KEY = process.env.TWILIO_API_KEY;
-const TWILIO_API_SECRET = process.env.TWILIO_API_SECRET;
-const TWIML_APP_SID = process.env.TWIML_APP_SID;
 
 const app = express();
 
@@ -30,10 +24,12 @@ const { logOut, logError } = require('./utils/logger');
 // Import Services
 const { ContactService } = require('./services/ContactServices');
 const { UserService } = require('./services/UserServices');
+const { VoiceServices } = require('./services/VoiceServices');
 
 // Initialize services
 const contactService = new ContactService();
 const userService = new UserService();
+const voiceServices = new VoiceServices(userService);
 
 
 /****************************************************
@@ -236,42 +232,18 @@ app.post('/voice/token', (req, res) => {
     logOut('API', `POST /voice/token - Request received for userGuid: ${userGuid}`);
     
     try {
-        if (!userGuid) {
-            logOut('API', 'POST /voice/token - Missing required parameter: userGuid');
-            return res.status(400).json({ error: 'Missing required parameter: userGuid' });
-        }
-
-        // Check if user exists
-        const user = userService.getUser(userGuid);
-
-        if (!user) {
-            logOut('API', `POST /voice/token - User not found: ${userGuid}`);
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Create a Voice Grant for this token
-        const voiceGrant = new VoiceGrant({
-            outgoingApplicationSid: TWIML_APP_SID,
-            incomingAllow: true, // Allow incoming calls
-        });
-
-        // Create an access token with the userGuid as the identity
-        const token = new AccessToken(
-            TWILIO_ACCOUNT_SID,
-            TWILIO_API_KEY,
-            TWILIO_API_SECRET,
-            { identity: userGuid }
-        );
-
-        // Add the voice grant to the token
-        token.addGrant(voiceGrant);
-
-        // Return the token as JSON
-        const tokenJwt = token.toJwt();
+        const tokenResponse = voiceServices.generateToken(userGuid);
         logOut('API', `POST /voice/token - Token generated successfully for userGuid: ${userGuid}`);
-        res.json({ token: tokenJwt });
+        res.json(tokenResponse);
     } catch (error) {
         logError('API', `POST /voice/token - Error: ${error.message}`);
+        
+        if (error.message === 'Missing required parameter: userGuid') {
+            return res.status(400).json({ error: error.message });
+        }
+        if (error.message === 'User not found') {
+            return res.status(404).json({ error: error.message });
+        }
         res.status(500).json({ error: error.message });
     }
 });
@@ -281,29 +253,18 @@ app.post('/voice/dial', (req, res) => {
     logOut('API', `POST /voice/dial - Request received for userGuid: ${userGuid}, phoneNumber: ${phoneNumber}`);
     
     try {
-        if (!userGuid || !phoneNumber) {
-            logOut('API', 'POST /voice/dial - Missing required parameters: userGuid and/or phoneNumber');
-            return res.status(400).json({ error: 'Missing required parameters: userGuid and phoneNumber' });
-        }
-
-        // Check if user exists
-        const user = userService.getUser(userGuid);
-
-        if (!user) {
-            logOut('API', `POST /voice/dial - User not found: ${userGuid}`);
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Placeholder for voice dial logic
-        logOut('API', `POST /voice/dial - Dial request processed for userGuid: ${userGuid}, phoneNumber: ${phoneNumber}`);
-        res.json({ 
-            success: true, 
-            message: 'Voice dial endpoint placeholder',
-            userGuid: userGuid,
-            phoneNumber: phoneNumber
-        });
+        const callResponse = voiceServices.initiateCall(userGuid, phoneNumber);
+        logOut('API', `POST /voice/dial - Call initiated successfully for userGuid: ${userGuid}, phoneNumber: ${phoneNumber}`);
+        res.json(callResponse);
     } catch (error) {
         logError('API', `POST /voice/dial - Error: ${error.message}`);
+        
+        if (error.message === 'Missing required parameters: userGuid and phoneNumber') {
+            return res.status(400).json({ error: error.message });
+        }
+        if (error.message === 'User not found') {
+            return res.status(404).json({ error: error.message });
+        }
         res.status(500).json({ error: error.message });
     }
 });
