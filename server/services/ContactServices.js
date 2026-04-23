@@ -417,8 +417,15 @@ class ContactService extends EventEmitter {
         // Update activities map
         this.activities.set(userGUID, userActivities);
 
-        // Emit event
-        this.emit('activityAdded', activity);
+        // Enrich with contact info (same shape as GET /activities)
+        const contacts = this.data.get(userGUID)?.get('contacts');
+        const enriched = {
+            ...activity,
+            contact: contacts?.get(activity.contactGuid) || null
+        };
+
+        // Emit event with userGuid so listeners can route per-user
+        this.emit('activityAdded', { userGuid: userGUID, activity: enriched });
 
         return activity;
     }

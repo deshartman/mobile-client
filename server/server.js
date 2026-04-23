@@ -25,11 +25,15 @@ const { logOut, logError } = require('./utils/logger');
 const { ContactService } = require('./services/ContactServices');
 const { UserService } = require('./services/UserServices');
 const { VoiceServices } = require('./services/VoiceServices');
+const { WebhookService } = require('./services/WebhookService');
+const { SseService } = require('./services/SseService');
 
 // Initialize services
 const contactService = new ContactService();
 const userService = new UserService();
 const voiceServices = new VoiceServices(userService);
+const webhookService = new WebhookService(contactService);
+const sseService = new SseService(contactService);
 
 
 /****************************************************
@@ -225,6 +229,87 @@ app.delete('/users/:userGuid', (req, res) => {
     }
 });
 
+
+// SSE: per-user server-push channel
+app.get('/events/:userGuid', (req, res) => {
+    const { userGuid } = req.params;
+    logOut('API', `GET /events/${userGuid} - SSE client connecting`);
+
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive'
+    });
+    res.write('event: connected\ndata: {}\n\n');
+
+    sseService.addClient(userGuid, res);
+
+    const keepAlive = setInterval(() => {
+        res.write(': keep-alive\n\n');
+    }, 30000);
+
+    req.on('close', () => {
+        clearInterval(keepAlive);
+        sseService.removeClient(userGuid, res);
+    });
+});
+
+// Stubbed call/message endpoints - simulate Twilio webhooks firing back
+app.post('/voice/call/start', (req, res) => {
+    const { userGuid, to, contactGuid } = req.body;
+    logOut('API', `POST /voice/call/start - userGuid: ${userGuid}, to: ${to}`);
+
+    if (!userGuid || !to) {
+        return res.status(400).json({ error: 'Missing required fields: userGuid, to' });
+    }
+
+    // TODO: replace with real Twilio call creation (client.calls.create({...}))
+    const callSid = webhookService.registerCall({ userGuid, to, contactGuid });
+    res.json({ callSid });
+});
+
+app.post('/voice/call/end', (req, res) => {
+    const { callSid } = req.body;
+    logOut('API', `POST /voice/call/end - callSid: ${callSid}`);
+
+    if (!callSid) {
+        return res.status(400).json({ error: 'Missing required field: callSid' });
+    }
+
+    // TODO: replace with real call termination (client.calls(callSid).update({status:'completed'}))
+    // With real Twilio this would NOT directly fire the activity — Twilio's status
+    // webhook would. For the stub we simulate that callback.
+    webhookService.simulateVoiceCompletion(callSid, 200);
+    res.status(202).json({ status: 'ending' });
+});
+
+app.post('/messaging/send', (req, res) => {
+    const { userGuid, to, body, channel, contactGuid } = req.body;
+    logOut('API', `POST /messaging/send - userGuid: ${userGuid}, to: ${to}, channel: ${channel}`);
+
+    if (!userGuid || !to || !channel) {
+        return res.status(400).json({ error: 'Missing required fields: userGuid, to, channel' });
+    }
+
+    // TODO: replace with real Twilio SMS/WhatsApp send (client.messages.create({...}))
+    const messageSid = webhookService.registerMessage({ userGuid, to, channel, contactGuid });
+    webhookService.simulateMessageDelivered(messageSid, 200);
+    res.json({ messageSid, body });
+});
+
+// Twilio webhook endpoints (URL-encoded body)
+// NOTE: signature validation deferred - add twilio.validateRequest() with TWILIO_AUTH_TOKEN before going live.
+app.post('/webhooks/voice/status', express.urlencoded({ extended: false }), (req, res) => {
+    logOut('API', `POST /webhooks/voice/status - ${JSON.stringify(req.body)}`);
+    webhookService.handleVoiceStatus(req.body);
+    res.status(204).send();
+});
+
+app.post('/webhooks/messaging/status', express.urlencoded({ extended: false }), (req, res) => {
+    logOut('API', `POST /webhooks/messaging/status - ${JSON.stringify(req.body)}`);
+    webhookService.handleMessageStatus(req.body);
+    res.status(204).send();
+});
 
 // Voice API Endpoints
 app.post('/voice/token', (req, res) => {

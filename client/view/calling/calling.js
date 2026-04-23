@@ -1,7 +1,31 @@
 document.addEventListener('DOMContentLoaded', () => {
+    let callSid = null;
+
     // Get contact data from sessionStorage
     const contactJson = sessionStorage.getItem('currentContact');
     const number = new URLSearchParams(window.location.search).get('number');
+
+    // Initiate the call via the server (stub fires fake webhooks)
+    (async () => {
+        const userGuid = sessionStorage.getItem('userGUID');
+        if (!userGuid || !number) return;
+        let contactGuid = null;
+        if (contactJson) {
+            try { contactGuid = JSON.parse(contactJson).guid || null; } catch (e) { /* ignore */ }
+        }
+        try {
+            const res = await fetch('/voice/call/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userGuid, to: number, contactGuid })
+            });
+            const data = await res.json();
+            callSid = data.callSid;
+            console.log('[Calling] Call started, callSid:', callSid);
+        } catch (err) {
+            console.error('[Calling] Failed to start call:', err);
+        }
+    })();
 
     if (contactJson) {
         try {
@@ -118,7 +142,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // End call button
     const endCallButton = document.querySelector('.end-call-button');
-    endCallButton.addEventListener('click', () => {
+    endCallButton.addEventListener('click', async () => {
+        if (callSid) {
+            try {
+                await fetch('/voice/call/end', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ callSid })
+                });
+            } catch (err) {
+                console.error('[Calling] Failed to end call:', err);
+            }
+        }
         window.location.href = '/index.html';
     });
 

@@ -92,19 +92,34 @@ function createMessageElement(content, isSent) {
     return messageDiv;
 }
 
-function sendMessage() {
+async function sendMessage() {
     const content = messageInput.value.trim();
     if (!content) return;
 
     const messageElement = createMessageElement(content, true);
     messageContainer.appendChild(messageElement);
 
-    // Clear input and hide clear button
     messageInput.value = '';
     messageClearButton.style.display = 'none';
-
-    // Scroll to bottom
     messageContainer.scrollTop = messageContainer.scrollHeight;
+
+    const userGuid = sessionStorage.getItem('userGUID');
+    const to = new URLSearchParams(window.location.search).get('number');
+    const contactJson = sessionStorage.getItem('currentContact');
+    let contactGuid = null;
+    if (contactJson) {
+        try { contactGuid = JSON.parse(contactJson).guid || null; } catch (e) { /* ignore */ }
+    }
+
+    try {
+        await fetch('/messaging/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userGuid, to, body: content, channel: 'whatsapp', contactGuid })
+        });
+    } catch (err) {
+        console.error('[WhatsApp] Failed to send:', err);
+    }
 }
 
 messageSendButton.addEventListener('click', sendMessage);

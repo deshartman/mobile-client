@@ -244,6 +244,30 @@ class ActivityList {
         }
     }
 
+    subscribeToEvents() {
+        if (!this.userId) return;
+        const source = new EventSource(`/events/${this.userId}`);
+
+        source.addEventListener('activity.added', (event) => {
+            try {
+                const activity = JSON.parse(event.data);
+                console.log('[SSE] activity.added:', activity);
+                this.activities.unshift(activity);
+                sessionStorage.setItem('activitiesCache', JSON.stringify(this.activities));
+                sessionStorage.setItem('activitiesCacheTimestamp', Date.now().toString());
+                this.render();
+            } catch (err) {
+                console.error('[SSE] Failed to handle activity.added:', err);
+            }
+        });
+
+        source.onerror = (err) => {
+            console.warn('[SSE] connection error:', err);
+        };
+
+        this.eventSource = source;
+    }
+
     // Initialize the component
     async initialize() {
         // Fetch data from server
@@ -272,6 +296,9 @@ class ActivityList {
 
         // Make the activity list available globally for refresh triggers
         window.activityList = this;
+
+        // Subscribe to server-sent events for real-time activity updates
+        this.subscribeToEvents();
 
         // Set up visibility change listener to refresh data when app comes to foreground
         document.addEventListener('visibilitychange', () => {
