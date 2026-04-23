@@ -1,7 +1,11 @@
+.list-item-wrapper {
+    border-bottom: 1px solid #e0e0e0;
+    background-color: white;
+}
+
 .list-item {
     display: flex;
     padding: 12px;
-    border-bottom: 1px solid #e0e0e0;
     background-color: white;
     cursor: pointer;
 }
@@ -20,20 +24,11 @@
     margin-right: 12px;
     border-radius: 50%;
     background-color: #e3f2fd;
-    cursor: pointer;
 }
 
 .list-item-icon i {
     color: #2196f3;
     font-size: 18px;
-}
-
-.list-item-icon .dropdown-arrow {
-    position: absolute;
-    bottom: -2px;
-    right: -2px;
-    font-size: 12px;
-    color: #757575;
 }
 
 .list-item-content {
@@ -58,12 +53,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.list-item-info-icon {
-    margin-left: 8px;
-    color: #757575;
-    cursor: pointer;
 }
 
 .list-item-subtitle {
@@ -92,37 +81,40 @@
     font-size: 0.8em;
 }
 
-.dropdown-menu {
-    display: none;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    background: white;
-    border-radius: 4px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    z-index: 1000;
-    min-width: 150px;
-}
-
-.dropdown-menu.show {
-    display: block;
-}
-
-.dropdown-item {
+.action-drawer {
     display: flex;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: stretch;
+    background-color: #fafafa;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.2s ease-out;
+}
+
+.list-item-wrapper.expanded .action-drawer {
+    max-height: 80px;
+}
+
+.action-button {
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    padding: 8px 16px;
+    justify-content: center;
+    flex: 1;
+    padding: 10px 8px;
     cursor: pointer;
+    color: #2196f3;
+    font-size: 0.85em;
 }
 
-.dropdown-item:hover {
-    background-color: #f5f5f5;
+.action-button:hover {
+    background-color: #eeeeee;
 }
 
-.dropdown-item i {
-    margin-right: 8px;
-    width: 20px;
-    text-align: center;
+.action-button i {
+    font-size: 18px;
+    margin-bottom: 4px;
 }
 
 .phone-number {

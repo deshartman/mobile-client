@@ -1,37 +1,39 @@
 <template id="activity-list-item">
-        <div class="list-item">
-            <div class="list-item-icon">
-                <i class="icon-type"></i>
-                <i class="fas fa-chevron-down dropdown-arrow"></i>
-                <div class="dropdown-menu">
-                    <div class="dropdown-item" data-action="call">
-                        <i class="fas fa-phone"></i>
-                        <span>Call</span>
-                    </div>
-                    <div class="dropdown-item" data-action="message">
-                        <i class="fas fa-comment"></i>
-                        <span>Message</span>
-                    </div>
-                    <div class="dropdown-item" data-action="whatsapp">
-                        <i class="fab fa-whatsapp"></i>
-                        <span>WhatsApp</span>
-                    </div>
+        <div class="list-item-wrapper">
+            <div class="list-item">
+                <div class="list-item-icon">
+                    <i class="icon-type"></i>
                 </div>
-            </div>
-            <div class="list-item-content">
-                <div class="content-wrapper">
-                    <div class="title-row">
-                        <div class="list-item-title"></div>
-                        <div class="list-item-info-icon">
-                            <i class="fas fa-info-circle"></i>
+                <div class="list-item-content">
+                    <div class="content-wrapper">
+                        <div class="title-row">
+                            <div class="list-item-title"></div>
                         </div>
+                        <div class="list-item-subtitle"></div>
                     </div>
-                    <div class="list-item-subtitle"></div>
+                </div>
+                <div class="list-item-info">
+                    <div class="list-item-time"></div>
+                    <div class="list-item-duration"></div>
                 </div>
             </div>
-            <div class="list-item-info">
-                <div class="list-item-time"></div>
-                <div class="list-item-duration"></div>
+            <div class="action-drawer">
+                <div class="action-button" data-action="call">
+                    <i class="fas fa-phone"></i>
+                    <span>Call</span>
+                </div>
+                <div class="action-button" data-action="message">
+                    <i class="fas fa-comment"></i>
+                    <span>Message</span>
+                </div>
+                <div class="action-button" data-action="whatsapp">
+                    <i class="fab fa-whatsapp"></i>
+                    <span>WhatsApp</span>
+                </div>
+                <div class="action-button" data-action="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </div>
             </div>
         </div>
 </template>

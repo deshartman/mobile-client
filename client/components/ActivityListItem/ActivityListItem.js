@@ -77,20 +77,14 @@ class ActivityListItem {
         }
     }
 
-    handleDropdownClick(event) {
+    handleActionClick(event, action) {
         event.stopPropagation();
-        const dropdownMenu = this.element.querySelector('.dropdown-menu');
-        // Close all other open dropdowns
-        document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
-            if (menu !== dropdownMenu) {
-                menu.classList.remove('show');
-            }
-        });
-        dropdownMenu.classList.toggle('show');
-    }
 
-    handleDropdownItemClick(event, action) {
-        event.stopPropagation();
+        if (action === 'settings') {
+            this.handleInfoClick(event);
+            return;
+        }
+
         const identity = this.activity.contact?.identities.find(id =>
             id.type.toLowerCase() === action
         ) || { value: this.activity.identityValue };
@@ -119,54 +113,24 @@ class ActivityListItem {
     }
 
     handleItemClick(event) {
-        // Don't trigger if clicking on icon or info icon (they have their own handlers)
-        if (!event.target.closest('.list-item-icon') && !event.target.closest('.list-item-info-icon')) {
-            const identity = { value: this.activity.identityValue };
-
-            // Store contact data in sessionStorage if available
-            if (this.activity.contact) {
-                sessionStorage.setItem('currentContact', JSON.stringify(this.activity.contact));
-                sessionStorage.setItem('contactTimestamp', Date.now().toString());
-            } else {
-                // Clear any previous contact data
-                sessionStorage.removeItem('currentContact');
-                sessionStorage.removeItem('contactTimestamp');
+        document.querySelectorAll('.list-item-wrapper.expanded').forEach(el => {
+            if (el !== this.element) {
+                el.classList.remove('expanded');
             }
-
-            switch (this.activity.type) {
-                case 'Phone':
-                    window.location.href = `view/calling/calling.html?number=${identity.value}`;
-                    break;
-                case 'Message':
-                    window.location.href = `view/message/message.html?number=${identity.value}`;
-                    break;
-                case 'WhatsApp':
-                    window.location.href = `view/whatsapp/whatsapp.html?number=${identity.value}`;
-                    break;
-                case 'Contact':
-                    this.handleInfoClick(event);
-                    break;
-            }
-        }
+        });
+        this.element.classList.toggle('expanded');
     }
 
     attachEventListeners() {
-        // Item click
-        this.element.addEventListener('click', this.handleItemClick.bind(this));
+        // Row click toggles the drawer
+        const row = this.element.querySelector('.list-item');
+        row.addEventListener('click', this.handleItemClick.bind(this));
 
-        // Info icon click
-        const infoIcon = this.element.querySelector('.list-item-info-icon');
-        infoIcon.addEventListener('click', this.handleInfoClick.bind(this));
-
-        // Dropdown toggle
-        const listItemIcon = this.element.querySelector('.list-item-icon');
-        listItemIcon.addEventListener('click', this.handleDropdownClick.bind(this));
-
-        // Dropdown item clicks
-        const dropdownItems = this.element.querySelectorAll('.dropdown-item');
-        dropdownItems.forEach(item => {
-            item.addEventListener('click', (e) =>
-                this.handleDropdownItemClick(e, item.dataset.action)
+        // Action button clicks
+        const actionButtons = this.element.querySelectorAll('.action-button');
+        actionButtons.forEach(button => {
+            button.addEventListener('click', (e) =>
+                this.handleActionClick(e, button.dataset.action)
             );
         });
     }

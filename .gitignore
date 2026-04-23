@@ -4,6 +4,10 @@ server/pnpm-lock.yaml
 server/package-lock.json
 CLAUDE-VoiceSDK.md
 
+# Playwright MCP test artifacts
+.playwright-mcp/
+/*.png
+
 # Environment files
 .env
 .env.local

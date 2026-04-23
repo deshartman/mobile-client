@@ -19,6 +19,21 @@ body {
     background-color: var(--color-background);
 }
 
+.app-container {
+    max-width: 600px;
+    margin: 0 auto;
+    background-color: var(--color-white);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+@media (max-width: 480px) {
+    .app-container {
+        max-width: 100%;
+    }
+}
+
 /* List Item Styles - Used across components */
 .list-item {
     display: flex;
