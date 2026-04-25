@@ -16,6 +16,32 @@
 <body>
     <div id="app-root"></div>
 
+    <!-- Incoming-call overlay (visible app-wide; shown by DeviceService 'incomingCall' event) -->
+    <div id="incoming-call-modal" class="incoming-call-modal" style="display: none;">
+        <div class="incoming-call-top">
+            <div class="incoming-call-name" id="incoming-call-from">Unknown</div>
+            <div class="incoming-call-label">mobile</div>
+        </div>
+        <div class="incoming-call-actions">
+            <div class="incoming-call-action">
+                <button class="incoming-call-reject" id="incoming-call-reject">
+                    <i class="fas fa-phone-slash"></i>
+                </button>
+                <span class="incoming-call-action-label">Decline</span>
+            </div>
+            <div class="incoming-call-action">
+                <button class="incoming-call-accept" id="incoming-call-accept">
+                    <i class="fas fa-phone"></i>
+                </button>
+                <span class="incoming-call-action-label">Accept</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Twilio Voice SDK + DeviceService loaded app-wide so Device stays registered across views -->
+    <script src="/libs/twilio.min.js"></script>
+    <script src="/services/DeviceService.js"></script>
+    <script src="/services/VoiceBootstrap.js"></script>
     <script type="module" src="/index.js"></script>
 </body>
 </html>

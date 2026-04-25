@@ -2,22 +2,45 @@ const { v4: uuidv4 } = require('uuid');
 const { logOut, logError } = require('../utils/logger');
 
 class WebhookService {
-    constructor(contactService) {
+    constructor(contactService, sseService = null) {
         this.contactService = contactService;
+        this.sseService = sseService;
         this.callMap = new Map();
         this.messageMap = new Map();
     }
 
-    registerCall({ userGuid, to, contactGuid }) {
-        const callSid = `STUB-CALL-${uuidv4()}`;
+    /**
+     * Associate a real Twilio CallSid with the originating user/contact so that
+     * the status webhook can create the activity record when the call completes.
+     */
+    registerCallBySid(callSid, { userGuid, to, contactGuid }) {
         this.callMap.set(callSid, {
             userGuid,
             to,
             contactGuid: contactGuid || null,
+            direction: 'outbound',
             startedAt: Date.now()
         });
-        logOut('WebhookService', `Registered call ${callSid} for user ${userGuid} → ${to}`);
-        return callSid;
+        logOut('WebhookService', `Registered outbound call ${callSid} for user ${userGuid} → ${to}`);
+    }
+
+    /**
+     * Associate an inbound CallSid with the user whose Twilio number was dialed.
+     * Also push an 'incoming-call' SSE event so the browser can show the incoming UI.
+     */
+    registerIncomingCall({ callSid, from, to, userGuid }) {
+        this.callMap.set(callSid, {
+            userGuid,
+            to: from,           // for activity logging, `to` is the *other* party (the caller)
+            contactGuid: null,
+            direction: 'inbound',
+            startedAt: Date.now()
+        });
+        logOut('WebhookService', `Registered inbound call ${callSid} for user ${userGuid} (from ${from} → ${to})`);
+
+        if (this.sseService) {
+            this.sseService.broadcast(userGuid, 'incoming-call', { from, to, callSid });
+        }
     }
 
     registerMessage({ userGuid, to, channel, contactGuid }) {
@@ -94,15 +117,9 @@ class WebhookService {
     }
 
     /**
-     * Stub helper: simulate a Twilio webhook firing after a delay.
-     * Real Twilio fires the webhook on its own; this stands in during development.
+     * Stub helper: simulate a messaging webhook firing after a delay.
+     * Voice no longer needs a simulator — the real Twilio Device drives call flow end-to-end.
      */
-    simulateVoiceCompletion(callSid, delayMs = 500) {
-        setTimeout(() => {
-            this.handleVoiceStatus({ CallSid: callSid, CallStatus: 'completed', CallDuration: '60' });
-        }, delayMs);
-    }
-
     simulateMessageDelivered(messageSid, delayMs = 500) {
         setTimeout(() => {
             this.handleMessageStatus({ MessageSid: messageSid, MessageStatus: 'delivered' });

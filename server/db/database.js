@@ -1,0 +1,67 @@
+/**
+ * SQLite database singleton.
+ *
+ * Opens (or creates) server/data/app.db, enables foreign keys + WAL mode,
+ * and applies idempotent schema DDL.
+ */
+const path = require('path');
+const fs = require('fs');
+const Database = require('better-sqlite3');
+const { logOut } = require('../utils/logger');
+
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const DB_PATH = path.join(DATA_DIR, 'app.db');
+
+if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+const db = new Database(DB_PATH);
+
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+    user_guid     TEXT PRIMARY KEY,
+    name          TEXT NOT NULL,
+    email         TEXT NOT NULL UNIQUE,
+    twilio_number TEXT UNIQUE,
+    active        INTEGER NOT NULL DEFAULT 1,
+    created       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS contacts (
+    contact_guid  TEXT PRIMARY KEY,
+    user_guid     TEXT NOT NULL REFERENCES users(user_guid) ON DELETE CASCADE,
+    first_name    TEXT,
+    last_name     TEXT,
+    company       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_guid);
+
+CREATE TABLE IF NOT EXISTS contact_identities (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_guid  TEXT NOT NULL REFERENCES contacts(contact_guid) ON DELETE CASCADE,
+    type          TEXT NOT NULL,
+    value         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_identities_contact ON contact_identities(contact_guid);
+
+CREATE TABLE IF NOT EXISTS activities (
+    id             TEXT PRIMARY KEY,
+    user_guid      TEXT NOT NULL REFERENCES users(user_guid) ON DELETE CASCADE,
+    type           TEXT NOT NULL,
+    datetime       TEXT NOT NULL,
+    duration       INTEGER NOT NULL DEFAULT 0,
+    identity_value TEXT,
+    contact_guid   TEXT REFERENCES contacts(contact_guid) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activities_user_dt ON activities(user_guid, datetime DESC);
+`;
+
+db.exec(SCHEMA);
+
+logOut('DB', `Database ready at ${DB_PATH}`);
+
+module.exports = { db };

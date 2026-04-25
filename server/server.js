@@ -20,6 +20,10 @@ app.use(express.static(path.join(__dirname, '../client'))); // Serve static file
 
 const { logOut, logError } = require('./utils/logger');
 
+// Initialize DB and run idempotent seed before services load
+require('./db/database');
+const { seed } = require('./db/seed');
+seed();
 
 // Import Services
 const { ContactService } = require('./services/ContactServices');
@@ -32,8 +36,8 @@ const { SseService } = require('./services/SseService');
 const contactService = new ContactService();
 const userService = new UserService();
 const voiceServices = new VoiceServices(userService);
-const webhookService = new WebhookService(contactService);
 const sseService = new SseService(contactService);
+const webhookService = new WebhookService(contactService, sseService);
 
 
 /****************************************************
@@ -54,9 +58,8 @@ app.get('/contacts/:userGuid', (req, res) => {
     
     try {
         const contacts = contactService.getContacts(userGuid);
-        const contactsArray = Array.from(contacts.values());
-        logOut('API', `GET /contacts/${userGuid} - Returning ${contactsArray.length} contacts`);
-        res.json(contactsArray);
+        logOut('API', `GET /contacts/${userGuid} - Returning ${contacts.length} contacts`);
+        res.json(contacts);
     } catch (error) {
         logError('API', `GET /contacts/${userGuid} - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
@@ -254,35 +257,7 @@ app.get('/events/:userGuid', (req, res) => {
     });
 });
 
-// Stubbed call/message endpoints - simulate Twilio webhooks firing back
-app.post('/voice/call/start', (req, res) => {
-    const { userGuid, to, contactGuid } = req.body;
-    logOut('API', `POST /voice/call/start - userGuid: ${userGuid}, to: ${to}`);
-
-    if (!userGuid || !to) {
-        return res.status(400).json({ error: 'Missing required fields: userGuid, to' });
-    }
-
-    // TODO: replace with real Twilio call creation (client.calls.create({...}))
-    const callSid = webhookService.registerCall({ userGuid, to, contactGuid });
-    res.json({ callSid });
-});
-
-app.post('/voice/call/end', (req, res) => {
-    const { callSid } = req.body;
-    logOut('API', `POST /voice/call/end - callSid: ${callSid}`);
-
-    if (!callSid) {
-        return res.status(400).json({ error: 'Missing required field: callSid' });
-    }
-
-    // TODO: replace with real call termination (client.calls(callSid).update({status:'completed'}))
-    // With real Twilio this would NOT directly fire the activity — Twilio's status
-    // webhook would. For the stub we simulate that callback.
-    webhookService.simulateVoiceCompletion(callSid, 200);
-    res.status(202).json({ status: 'ending' });
-});
-
+// Messaging send is still stubbed — real Twilio integration is a follow-up
 app.post('/messaging/send', (req, res) => {
     const { userGuid, to, body, channel, contactGuid } = req.body;
     logOut('API', `POST /messaging/send - userGuid: ${userGuid}, to: ${to}, channel: ${channel}`);
@@ -297,15 +272,31 @@ app.post('/messaging/send', (req, res) => {
     res.json({ messageSid, body });
 });
 
+// Twilio webhook signature validation. Gated on TWILIO_AUTH_TOKEN — when unset
+// (e.g. local dev without ngrok stability), the middleware is a no-op so
+// curl-testing still works.
+const twilioLib = require('twilio');
+const validateTwilioRequest = (req, res, next) => {
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    if (!authToken) return next();
+
+    const signature = req.header('X-Twilio-Signature');
+    const url = `${SERVER_BASE_URL}${req.originalUrl}`;
+    if (twilioLib.validateRequest(authToken, signature, url, req.body)) {
+        return next();
+    }
+    logError('API', `Twilio signature validation failed for ${req.method} ${req.originalUrl}`);
+    return res.status(403).type('text/xml').send('<Response><Say>Unauthorized</Say></Response>');
+};
+
 // Twilio webhook endpoints (URL-encoded body)
-// NOTE: signature validation deferred - add twilio.validateRequest() with TWILIO_AUTH_TOKEN before going live.
-app.post('/webhooks/voice/status', express.urlencoded({ extended: false }), (req, res) => {
+app.post('/webhooks/voice/status', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
     logOut('API', `POST /webhooks/voice/status - ${JSON.stringify(req.body)}`);
     webhookService.handleVoiceStatus(req.body);
     res.status(204).send();
 });
 
-app.post('/webhooks/messaging/status', express.urlencoded({ extended: false }), (req, res) => {
+app.post('/webhooks/messaging/status', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
     logOut('API', `POST /webhooks/messaging/status - ${JSON.stringify(req.body)}`);
     webhookService.handleMessageStatus(req.body);
     res.status(204).send();
@@ -333,25 +324,47 @@ app.post('/voice/token', (req, res) => {
     }
 });
 
-app.post('/voice/dial', (req, res) => {
-    const { userGuid, phoneNumber } = req.body;
-    logOut('API', `POST /voice/dial - Request received for userGuid: ${userGuid}, phoneNumber: ${phoneNumber}`);
-    
-    try {
-        const callResponse = voiceServices.initiateCall(userGuid, phoneNumber);
-        logOut('API', `POST /voice/dial - Call initiated successfully for userGuid: ${userGuid}, phoneNumber: ${phoneNumber}`);
-        res.json(callResponse);
-    } catch (error) {
-        logError('API', `POST /voice/dial - Error: ${error.message}`);
-        
-        if (error.message === 'Missing required parameters: userGuid and phoneNumber') {
-            return res.status(400).json({ error: error.message });
-        }
-        if (error.message === 'User not found') {
-            return res.status(404).json({ error: error.message });
-        }
-        res.status(500).json({ error: error.message });
+// TwiML App Voice URL — Twilio POSTs here when Device.connect() fires on the client.
+// The browser passes custom keys (userGuid, contactGuid, destinationType, …) via
+// Device.connect({ params }); they arrive alongside Twilio's standard fields (To, From, CallSid).
+// VoiceServices.generateOutgoingTwiml switches on destinationType: phone | assistant | flex | custom.
+app.post('/voice/outgoing', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
+    const { To, userGuid, contactGuid, CallSid, destinationType } = req.body;
+    logOut('API', `POST /voice/outgoing - CallSid: ${CallSid}, To: ${To}, userGuid: ${userGuid}, destinationType: ${destinationType || 'phone'}`);
+
+    // Only register phone-destined calls for activity logging; other branches aren't PSTN legs.
+    const effectiveType = destinationType || 'phone';
+    if (effectiveType === 'phone' && CallSid && userGuid) {
+        webhookService.registerCallBySid(CallSid, { userGuid, to: To, contactGuid });
     }
+
+    const twiml = voiceServices.generateOutgoingTwiml(req.body);
+    res.type('text/xml').send(twiml);
+});
+
+// Inbound PSTN → browser. Twilio POSTs here when a call arrives on any provisioned
+// number configured with voiceUrl={SERVER_BASE_URL}/voice/incoming. We look up the
+// owner of the dialed number, then return TwiML that dials <Client>{userGuid}</Client>.
+app.post('/voice/incoming', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
+    const { To, From, CallSid } = req.body;
+    logOut('API', `POST /voice/incoming - CallSid: ${CallSid}, From: ${From}, To: ${To}`);
+
+    const owner = userService.getUserByTwilioNumber(To);
+    if (!owner) {
+        logError('API', `POST /voice/incoming - No user owns number ${To}`);
+        return res.type('text/xml').send(voiceServices.generateIncomingTwiml(null));
+    }
+
+    if (CallSid) {
+        webhookService.registerIncomingCall({
+            callSid: CallSid,
+            from: From,
+            to: To,
+            userGuid: owner.userGUID
+        });
+    }
+
+    res.type('text/xml').send(voiceServices.generateIncomingTwiml(owner.userGUID));
 });
 
 

@@ -2,9 +2,10 @@
  * Device Service for managing Twilio Voice SDK
  * Handles call functionality including setup, making/receiving calls, and call controls
  * Also manages audio devices and provides volume indicators
+ *
+ * Loaded as a classic <script> tag, so it depends on the browser-global `Twilio`
+ * exported by /libs/twilio.min.js. Exposes `window.deviceService` as a singleton.
  */
-
-const Device = require('@twilio/voice-sdk').Device;
 
 class DeviceService {
     constructor() {
@@ -27,8 +28,12 @@ class DeviceService {
                 await this.destroy();
             }
 
+            if (!window.Twilio || !window.Twilio.Device) {
+                throw new Error('Twilio Voice SDK not loaded — ensure /libs/twilio.min.js is included before DeviceService.js');
+            }
+            const Device = window.Twilio.Device;
+
             this.device = new Device(token, {
-                edge: ['sydney', 'ashburn'],
                 codecPreferences: ['opus', 'pcmu'],
                 enableRingingState: true,
                 logLevel: this.logLevel
@@ -520,5 +525,5 @@ class DeviceService {
     }
 }
 
-// Export as a singleton
-export default new DeviceService();
+// Expose singleton on the global so classic <script> consumers can reach it
+window.deviceService = new DeviceService();

@@ -2,6 +2,7 @@ server/node_modules/
 server/.env
 server/pnpm-lock.yaml
 server/package-lock.json
+server/data/
 CLAUDE-VoiceSDK.md
 
 # Playwright MCP test artifacts
@@ -18,3 +19,5 @@ CLAUDE-VoiceSDK.md
 
 # Environment files - ALL .env* files
 .env*
+!.env.example
+!server/.env.example

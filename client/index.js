@@ -68,6 +68,10 @@ try {
         if (isValidUser) {
             // Valid user, load main view
             await showMainView();
+            // Register Twilio Device app-wide so inbound calls ring from any screen
+            if (window.bootstrapVoice) {
+                window.bootstrapVoice(userGUID);
+            }
         } else {
             // Invalid user, clear session and show login
             console.log('userGUID validation failed, clearing session and showing login');
