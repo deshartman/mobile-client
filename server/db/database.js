@@ -58,6 +58,30 @@ CREATE TABLE IF NOT EXISTS activities (
     contact_guid   TEXT REFERENCES contacts(contact_guid) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_activities_user_dt ON activities(user_guid, datetime DESC);
+
+CREATE TABLE IF NOT EXISTS conversations (
+    conversation_sid TEXT PRIMARY KEY,
+    user_guid        TEXT NOT NULL REFERENCES users(user_guid) ON DELETE CASCADE,
+    contact_guid     TEXT REFERENCES contacts(contact_guid) ON DELETE SET NULL,
+    remote_address   TEXT NOT NULL,
+    proxy_address    TEXT NOT NULL,
+    activity_id      TEXT REFERENCES activities(id) ON DELETE SET NULL,
+    created          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_conv_user_pair
+    ON conversations(user_guid, proxy_address, remote_address);
+
+CREATE TABLE IF NOT EXISTS messages (
+    message_sid      TEXT PRIMARY KEY,
+    conversation_sid TEXT NOT NULL REFERENCES conversations(conversation_sid) ON DELETE CASCADE,
+    direction        TEXT NOT NULL,
+    author           TEXT,
+    body             TEXT,
+    datetime         TEXT NOT NULL,
+    idx              INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_messages_conv_dt
+    ON messages(conversation_sid, datetime);
 `;
 
 db.exec(SCHEMA);

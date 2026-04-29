@@ -31,13 +31,23 @@ const { UserService } = require('./services/UserServices');
 const { VoiceServices } = require('./services/VoiceServices');
 const { WebhookService } = require('./services/WebhookService');
 const { SseService } = require('./services/SseService');
+const { MessagesRepository } = require('./services/MessagesRepository');
+const { ConversationsService } = require('./services/ConversationsService');
 
 // Initialize services
 const contactService = new ContactService();
 const userService = new UserService();
 const voiceServices = new VoiceServices(userService);
 const sseService = new SseService(contactService);
-const webhookService = new WebhookService(contactService, sseService);
+const messagesRepo = new MessagesRepository();
+const conversationsService = new ConversationsService({ contactService, userService, messagesRepo, sseService });
+const webhookService = new WebhookService({
+    contactService,
+    userService,
+    sseService,
+    messagesRepo,
+    conversationsService
+});
 
 
 /****************************************************
@@ -257,19 +267,38 @@ app.get('/events/:userGuid', (req, res) => {
     });
 });
 
-// Messaging send is still stubbed — real Twilio integration is a follow-up
-app.post('/messaging/send', (req, res) => {
-    const { userGuid, to, body, channel, contactGuid } = req.body;
-    logOut('API', `POST /messaging/send - userGuid: ${userGuid}, to: ${to}, channel: ${channel}`);
+// Send an outbound SMS via Twilio Conversations. The message is NOT inserted
+// into the local messages table here — the onMessageAdded webhook is the
+// canonical write path for both inbound and outbound messages.
+app.post('/messaging/send', async (req, res) => {
+    const { userGuid, to, body, contactGuid } = req.body;
+    logOut('API', `POST /messaging/send - userGuid: ${userGuid}, to: ${to}`);
 
-    if (!userGuid || !to || !channel) {
-        return res.status(400).json({ error: 'Missing required fields: userGuid, to, channel' });
+    if (!userGuid || !to || !body) {
+        return res.status(400).json({ error: 'Missing required fields: userGuid, to, body' });
     }
 
-    // TODO: replace with real Twilio SMS/WhatsApp send (client.messages.create({...}))
-    const messageSid = webhookService.registerMessage({ userGuid, to, channel, contactGuid });
-    webhookService.simulateMessageDelivered(messageSid, 200);
-    res.json({ messageSid, body });
+    try {
+        const result = await conversationsService.sendMessage({ userGuid, remoteAddress: to, body, contactGuid });
+        logOut('API', `POST /messaging/send - sent ${result.messageSid} on ${result.conversationSid}`);
+        res.json(result);
+    } catch (err) {
+        logError('API', `POST /messaging/send - ${err.message}`);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Thread hydration — returns { conversationSid, messages } for the given pair.
+app.get('/messaging/thread/:userGuid', (req, res) => {
+    const { userGuid } = req.params;
+    const { to } = req.query;
+    try {
+        const thread = conversationsService.getThread(userGuid, to);
+        res.json(thread);
+    } catch (err) {
+        logError('API', `GET /messaging/thread/${userGuid} - ${err.message}`);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Twilio webhook signature validation. Gated on TWILIO_AUTH_TOKEN — when unset
@@ -296,10 +325,34 @@ app.post('/webhooks/voice/status', express.urlencoded({ extended: false }), vali
     res.status(204).send();
 });
 
-app.post('/webhooks/messaging/status', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
-    logOut('API', `POST /webhooks/messaging/status - ${JSON.stringify(req.body)}`);
-    webhookService.handleMessageStatus(req.body);
+// Twilio Conversations post-event webhook (default chat service).
+// Configured in Console → Conversations → Defaults → Post-event URL.
+app.post('/webhooks/conversations', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
+    logOut('API', `POST /webhooks/conversations - ${req.body.EventType} conv=${req.body.ConversationSid || ''} msg=${req.body.MessageSid || ''} author=${req.body.Author || ''}`);
+    webhookService.handleConversationsWebhook(req.body);
     res.status(204).send();
+});
+
+// Messaging Service "Send a webhook" bridge for inbound SMS.
+// Console → Messaging → Services → Integration → Incoming Messages: "Send a webhook",
+// URL = {SERVER_BASE_URL}/webhooks/messaging/inbound. We post the inbound into
+// the matching Conversation so onMessageAdded becomes the single source of truth.
+// Respond with an empty <Response/> so Twilio doesn't send an auto-reply.
+app.post('/webhooks/messaging/inbound', express.urlencoded({ extended: false }), validateTwilioRequest, async (req, res) => {
+    const { From, To, Body, MessageSid } = req.body;
+    logOut('API', `POST /webhooks/messaging/inbound - ${MessageSid} ${From} → ${To}`);
+
+    try {
+        await conversationsService.bridgeInboundSms({
+            from: From,
+            to: To,
+            body: Body,
+            smsMessageSid: MessageSid
+        });
+    } catch (err) {
+        logError('API', `POST /webhooks/messaging/inbound - ${err.message}`);
+    }
+    res.type('text/xml').send('<Response/>');
 });
 
 // Voice API Endpoints
