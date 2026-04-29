@@ -12,6 +12,13 @@ const messageClearButton = document.querySelector('.message-clear-button');
 const messageSendButton = document.querySelector('.message-send-button');
 const messageContainer = document.querySelector('.message-container');
 
+const userGuid = sessionStorage.getItem('userGUID');
+const remoteNumber = new URLSearchParams(window.location.search).get('number');
+
+// Matches message.js helpers to the VoiceBootstrap convention: digits only, so
+// "+61 401..." and "+61401..." compare equal.
+const normalizePhone = (s) => (s || '').replace(/\D/g, '');
+
 // Search functionality
 searchInput.addEventListener('input', function () {
     searchClearButton.style.display = this.value ? 'flex' : 'none';
@@ -28,37 +35,30 @@ searchInput.addEventListener('input', function () {
 searchClearButton.addEventListener('click', () => {
     searchInput.value = '';
     searchClearButton.style.display = 'none';
-    // Show all messages
     messageContainer.querySelectorAll('.message').forEach(message => {
         message.style.display = 'flex';
     });
-    // Hide search and show contact name
     toggleSearch(false);
 });
 
-// Search toggle functionality
 function toggleSearch(show) {
     if (show) {
-        // Hide contact name, show search
         contactNameContainer.style.display = 'none';
         searchContainer.style.display = 'block';
         topRow.classList.add('search-active');
         searchInput.focus();
     } else {
-        // Show contact name, hide search
         contactNameContainer.style.display = 'block';
         searchContainer.style.display = 'none';
         topRow.classList.remove('search-active');
     }
 }
 
-// Toggle search when search button is clicked
 searchToggleButton.addEventListener('click', () => {
     const isSearchVisible = searchContainer.style.display === 'block';
     toggleSearch(!isSearchVisible);
 });
 
-// Message input functionality
 messageInput.addEventListener('input', function () {
     messageClearButton.style.display = this.value ? 'flex' : 'none';
 });
@@ -68,10 +68,14 @@ messageClearButton.addEventListener('click', () => {
     messageClearButton.style.display = 'none';
 });
 
-// Send message functionality
-function createMessageElement(content, isSent) {
+/**
+ * Build a message bubble. `messageSid` tags the DOM node so the SSE echo of
+ * our own optimistic send can be deduped.
+ */
+function createMessageElement(content, isSent, { datetime, messageSid } = {}) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
+    if (messageSid) messageDiv.dataset.messageSid = messageSid;
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
@@ -79,8 +83,8 @@ function createMessageElement(content, isSent) {
 
     const timeDiv = document.createElement('div');
     timeDiv.className = 'message-time';
-    const now = new Date();
-    timeDiv.textContent = now.toLocaleTimeString('en-US', {
+    const when = datetime ? new Date(datetime) : new Date();
+    timeDiv.textContent = when.toLocaleTimeString('en-US', {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true
@@ -88,23 +92,36 @@ function createMessageElement(content, isSent) {
 
     messageDiv.appendChild(contentDiv);
     messageDiv.appendChild(timeDiv);
-
     return messageDiv;
 }
+
+function appendMessage(msg) {
+    const el = createMessageElement(msg.body, msg.direction === 'outbound', {
+        datetime: msg.datetime,
+        messageSid: msg.messageSid
+    });
+    messageContainer.appendChild(el);
+    messageContainer.scrollTop = messageContainer.scrollHeight;
+}
+
+// Pending optimistic sends (content string) keyed to allow dedup against
+// webhook echoes that arrive before the send response resolves.
+const pendingOutbound = new Set();
 
 async function sendMessage() {
     const content = messageInput.value.trim();
     if (!content) return;
 
-    const messageElement = createMessageElement(content, true);
-    messageContainer.appendChild(messageElement);
+    // Optimistic render — SSE echo will replace the data-message-sid once known.
+    const pendingKey = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimisticEl = createMessageElement(content, true, { messageSid: pendingKey });
+    messageContainer.appendChild(optimisticEl);
+    messageContainer.scrollTop = messageContainer.scrollHeight;
+    pendingOutbound.add(content);
 
     messageInput.value = '';
     messageClearButton.style.display = 'none';
-    messageContainer.scrollTop = messageContainer.scrollHeight;
 
-    const userGuid = sessionStorage.getItem('userGUID');
-    const to = new URLSearchParams(window.location.search).get('number');
     const contactJson = sessionStorage.getItem('currentContact');
     let contactGuid = null;
     if (contactJson) {
@@ -112,13 +129,19 @@ async function sendMessage() {
     }
 
     try {
-        await fetch('/messaging/send', {
+        const res = await fetch('/messaging/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userGuid, to, body: content, channel: 'sms', contactGuid })
+            body: JSON.stringify({ userGuid, to: remoteNumber, body: content, contactGuid })
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { messageSid } = await res.json();
+        // Swap the pending key for the real SID so the SSE echo can dedupe.
+        if (messageSid) optimisticEl.dataset.messageSid = messageSid;
     } catch (err) {
         console.error('[Message] Failed to send:', err);
+        optimisticEl.classList.add('send-failed');
+        pendingOutbound.delete(content);
     }
 }
 
@@ -131,14 +154,11 @@ messageInput.addEventListener('keypress', (e) => {
     }
 });
 
-// Back button functionality
 backButton.addEventListener('click', () => {
     window.location.href = '/index.html';
 });
 
-// Function to get contact name from URL or sessionStorage
 function getContactName() {
-    // Try to get contact from sessionStorage
     const contactJson = sessionStorage.getItem('currentContact');
     if (contactJson) {
         try {
@@ -148,28 +168,63 @@ function getContactName() {
             console.error('Error parsing contact from sessionStorage:', e);
         }
     }
-
-    // If no contact in sessionStorage, try to get from URL params
-    const urlParams = new URLSearchParams(window.location.search);
-    const number = urlParams.get('number');
-
-    if (number) {
-        return number;
-    }
-
-    // Default fallback
+    if (remoteNumber) return remoteNumber;
     return 'Contact';
+}
+
+async function hydrateThread() {
+    if (!userGuid || !remoteNumber) return;
+    try {
+        const res = await fetch(`/messaging/thread/${userGuid}?to=${encodeURIComponent(remoteNumber)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { messages } = await res.json();
+        messages.forEach(appendMessage);
+    } catch (err) {
+        console.error('[Message] Failed to hydrate thread:', err);
+    }
+}
+
+function subscribeToMessages() {
+    if (!userGuid) return;
+    // Reuse window.messageEventSource if the app already has one open; otherwise
+    // create our own for the duration of this view. The EventSource carries its
+    // own listener set across view navigations, so we must attach the listener
+    // only once per EventSource — otherwise each re-entry adds another listener
+    // and renders the same inbound message N times.
+    const es = window.messageEventSource || new EventSource(`/events/${userGuid}`);
+    if (!window.messageEventSource) window.messageEventSource = es;
+
+    if (es._messageAddedBound) return;
+    es._messageAddedBound = true;
+
+    es.addEventListener('message.added', (e) => {
+        let msg;
+        try { msg = JSON.parse(e.data); } catch (err) { return; }
+        const currentRemote = new URLSearchParams(window.location.search).get('number');
+        if (normalizePhone(msg.remoteAddress) !== normalizePhone(currentRemote)) return;
+
+        // Dedup: if an optimistic bubble with this SID is already on screen, stop.
+        if (msg.messageSid && messageContainer.querySelector(`[data-message-sid="${msg.messageSid}"]`)) {
+            return;
+        }
+        // Dedup by body for the outbound case where the echo beat the POST response.
+        if (msg.direction === 'outbound' && pendingOutbound.has(msg.body)) {
+            pendingOutbound.delete(msg.body);
+            const pending = messageContainer.querySelector('[data-message-sid^="pending-"].sent');
+            if (pending) {
+                pending.dataset.messageSid = msg.messageSid;
+                return;
+            }
+        }
+        appendMessage(msg);
+    });
 }
 
 // Initial setup
 messageClearButton.style.display = 'none';
 searchClearButton.style.display = 'none';
-
-// Set contact name
 contactName.textContent = getContactName();
-
-// Initialize search toggle state
 toggleSearch(false);
 
-// Scroll to bottom initially
-messageContainer.scrollTop = messageContainer.scrollHeight;
+hydrateThread();
+subscribeToMessages();

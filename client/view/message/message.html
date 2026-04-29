@@ -34,22 +34,8 @@
             </button>
         </div>
 
-        <!-- Message history container -->
-        <div class="message-container">
-            <!-- Example messages -->
-            <div class="message received">
-                <div class="message-content">Hi there! How can I help you today?</div>
-                <div class="message-time">9:30 AM</div>
-            </div>
-            <div class="message sent">
-                <div class="message-content">I have a question about my account.</div>
-                <div class="message-time">9:31 AM</div>
-            </div>
-            <div class="message received">
-                <div class="message-content">Sure, I'd be happy to help with any account-related questions.</div>
-                <div class="message-time">9:32 AM</div>
-            </div>
-        </div>
+        <!-- Message history container — populated from /messaging/thread/:userGuid on load -->
+        <div class="message-container"></div>
 
         <!-- Message input box -->
         <div class="message-input-container">
