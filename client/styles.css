@@ -24,6 +24,7 @@ body {
     margin: 0 auto;
     background-color: var(--color-white);
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
 }
