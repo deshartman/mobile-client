@@ -24,8 +24,9 @@ function generateCode() {
 }
 
 class AuthService {
-    constructor({ userService }) {
+    constructor({ userService, twilioNumberService }) {
         this.userService = userService;
+        this.twilioNumberService = twilioNumberService;
         this.client = null;
 
         this._getOtp = db.prepare('SELECT * FROM otp_verifications WHERE phone = ?');
@@ -145,7 +146,7 @@ class AuthService {
         return { verified: true, isExistingUser };
     }
 
-    completeAuth(phone, name) {
+    async completeAuth(phone, name) {
         this.validatePhone(phone);
 
         const row = this._getOtp.get(phone);
@@ -168,7 +169,23 @@ class AuthService {
             throw err;
         }
 
+        // Create the user first so provisioning can patch them. If provisioning
+        // fails we roll back the user and surface the Twilio error to the client.
         const userGUID = this.userService.createUser({ name: name.trim(), phone });
+        try {
+            await this.twilioNumberService.provisionForUser(userGUID, phone);
+        } catch (err) {
+            this.userService.deleteUser(userGUID);
+            const wrapped = new Error(`Could not provision a Twilio number: ${err.message}`);
+            wrapped.status = 502;
+            if (err.twilioCode !== undefined) wrapped.twilioCode = err.twilioCode;
+            if (err.twilioMessage) wrapped.twilioMessage = err.twilioMessage;
+            if (err.twilioMoreInfo) wrapped.twilioMoreInfo = err.twilioMoreInfo;
+            if (err.code) wrapped.reason = err.code;
+            if (err.country) wrapped.country = err.country;
+            throw wrapped;
+        }
+
         this._deleteOtp.run(phone);
         logOut('AuthService', `Signup complete for ${phone} → ${userGUID}`);
         return { userGUID };

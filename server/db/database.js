@@ -23,13 +23,14 @@ db.pragma('foreign_keys = ON');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
-    user_guid     TEXT PRIMARY KEY,
-    name          TEXT NOT NULL,
-    phone         TEXT UNIQUE,
-    email         TEXT UNIQUE,
-    twilio_number TEXT UNIQUE,
-    active        INTEGER NOT NULL DEFAULT 1,
-    created       TEXT NOT NULL
+    user_guid         TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    phone             TEXT UNIQUE,
+    email             TEXT UNIQUE,
+    twilio_number     TEXT UNIQUE,
+    twilio_number_sid TEXT,
+    active            INTEGER NOT NULL DEFAULT 1,
+    created           TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS otp_verifications (
@@ -95,33 +96,6 @@ CREATE INDEX IF NOT EXISTS idx_messages_conv_dt
 `;
 
 db.exec(SCHEMA);
-
-// One-shot migration: earlier schema had `email NOT NULL UNIQUE` and no `phone`.
-// If we detect the legacy shape, rebuild the users table in a transaction.
-const userCols = db.prepare(`PRAGMA table_info(users)`).all();
-const hasPhone = userCols.some((c) => c.name === 'phone');
-if (!hasPhone) {
-    logOut('DB', 'Migrating users table: adding phone column and relaxing email NOT NULL');
-    db.pragma('foreign_keys = OFF');
-    db.exec(`
-        BEGIN;
-        CREATE TABLE users_new (
-            user_guid     TEXT PRIMARY KEY,
-            name          TEXT NOT NULL,
-            phone         TEXT UNIQUE,
-            email         TEXT UNIQUE,
-            twilio_number TEXT UNIQUE,
-            active        INTEGER NOT NULL DEFAULT 1,
-            created       TEXT NOT NULL
-        );
-        INSERT INTO users_new (user_guid, name, phone, email, twilio_number, active, created)
-            SELECT user_guid, name, NULL, email, twilio_number, active, created FROM users;
-        DROP TABLE users;
-        ALTER TABLE users_new RENAME TO users;
-        COMMIT;
-    `);
-    db.pragma('foreign_keys = ON');
-}
 
 logOut('DB', `Database ready at ${DB_PATH}`);
 

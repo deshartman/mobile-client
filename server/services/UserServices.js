@@ -13,6 +13,7 @@ const rowToUser = (row) => {
         phone: row.phone || null,
         email: row.email || null,
         twilioNumber: row.twilio_number || null,
+        twilioNumberSid: row.twilio_number_sid || null,
         active: !!row.active,
         created: row.created
     };
@@ -27,7 +28,7 @@ class UserService extends EventEmitter {
         this._getByEmail = db.prepare('SELECT * FROM users WHERE email = ?');
         this._getByTwilioNumber = db.prepare('SELECT * FROM users WHERE twilio_number = ?');
         this._insert = db.prepare(
-            'INSERT INTO users (user_guid, name, phone, email, twilio_number, active, created) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO users (user_guid, name, phone, email, twilio_number, twilio_number_sid, active, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
         this._delete = db.prepare('DELETE FROM users WHERE user_guid = ?');
     }
@@ -41,6 +42,7 @@ class UserService extends EventEmitter {
             userData.phone || null,
             userData.email || null,
             userData.twilioNumber || null,
+            userData.twilioNumberSid || null,
             userData.active === false ? 0 : 1,
             userData.created || created
         );
@@ -92,13 +94,14 @@ class UserService extends EventEmitter {
             phone: patch.phone !== undefined ? patch.phone : existing.phone,
             email: patch.email !== undefined ? patch.email : existing.email,
             twilio_number: patch.twilioNumber !== undefined ? patch.twilioNumber : existing.twilio_number,
+            twilio_number_sid: patch.twilioNumberSid !== undefined ? patch.twilioNumberSid : existing.twilio_number_sid,
             active,
             created: existing.created
         };
 
         db.prepare(
-            'UPDATE users SET name = ?, phone = ?, email = ?, twilio_number = ?, active = ? WHERE user_guid = ?'
-        ).run(merged.name, merged.phone, merged.email, merged.twilio_number, merged.active, userGUID);
+            'UPDATE users SET name = ?, phone = ?, email = ?, twilio_number = ?, twilio_number_sid = ?, active = ? WHERE user_guid = ?'
+        ).run(merged.name, merged.phone, merged.email, merged.twilio_number, merged.twilio_number_sid, merged.active, userGUID);
 
         return rowToUser(this._getByGuid.get(userGUID));
     }

@@ -35,11 +35,13 @@ const { SseService } = require('./services/SseService');
 const { MessagesRepository } = require('./services/MessagesRepository');
 const { ConversationsService } = require('./services/ConversationsService');
 const { AuthService } = require('./services/AuthService');
+const { TwilioNumberService } = require('./services/TwilioNumberService');
 
 // Initialize services
 const contactService = new ContactService();
 const userService = new UserService();
-const authService = new AuthService({ userService });
+const twilioNumberService = new TwilioNumberService({ userService });
+const authService = new AuthService({ userService, twilioNumberService });
 const voiceServices = new VoiceServices(userService);
 const sseService = new SseService(contactService);
 const messagesRepo = new MessagesRepository();
@@ -219,15 +221,21 @@ app.post('/auth/verify-otp', (req, res) => {
     }
 });
 
-app.post('/auth/complete', (req, res) => {
+app.post('/auth/complete', async (req, res) => {
     const { phone, name } = req.body || {};
     logOut('API', `POST /auth/complete - phone=${phone}`);
     try {
-        const result = authService.completeAuth(phone, name);
+        const result = await authService.completeAuth(phone, name);
         res.json(result);
     } catch (error) {
         logError('API', `POST /auth/complete - Error: ${error.message}`);
-        res.status(error.status || 500).json({ error: error.message });
+        const body = { error: error.message };
+        if (error.reason) body.reason = error.reason;
+        if (error.twilioCode !== undefined) body.twilioCode = error.twilioCode;
+        if (error.twilioMessage) body.twilioMessage = error.twilioMessage;
+        if (error.twilioMoreInfo) body.twilioMoreInfo = error.twilioMoreInfo;
+        if (error.country) body.country = error.country;
+        res.status(error.status || 500).json(body);
     }
 });
 
@@ -263,11 +271,19 @@ app.put('/users/:userGuid', (req, res) => {
     }
 });
 
-app.delete('/users/:userGuid', (req, res) => {
+app.delete('/users/:userGuid', async (req, res) => {
     const userGuid = req.params.userGuid;
     logOut('API', `DELETE /users/${userGuid} - Request received`);
-    
+
     try {
+        // Release the Twilio number first so we don't leak a paid resource.
+        // If release fails we continue with the user delete and log the leak — the
+        // alternative (refusing to delete the user) strands them in a broken state.
+        try {
+            await twilioNumberService.releaseForUser(userGuid);
+        } catch (releaseErr) {
+            logError('API', `DELETE /users/${userGuid} - Number release failed (continuing with user delete): ${releaseErr.message}`);
+        }
         userService.deleteUser(userGuid);
         logOut('API', `DELETE /users/${userGuid} - User deleted successfully`);
         res.status(204).send();

@@ -39,6 +39,23 @@ async function loadTemplates() {
     }
 }
 
+// Populate the pinned "My Number" footer from the server. Runs once on load.
+async function populateMyNumber() {
+    const el = document.getElementById('my-number-value');
+    if (!el) return;
+    const userGUID = sessionStorage.getItem('userGUID');
+    if (!userGUID) return;
+    try {
+        const res = await fetch(`/users/${userGUID}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const user = await res.json();
+        el.textContent = user.twilioNumber || 'Not provisioned';
+    } catch (err) {
+        console.error('Error fetching user number:', err);
+        el.textContent = 'Unavailable';
+    }
+}
+
 // Check if data is stale
 function isDataStale() {
     const cachedTimestamp = sessionStorage.getItem('activitiesCacheTimestamp');
@@ -59,6 +76,9 @@ async function initializeApp() {
         if (!templatesLoaded) {
             throw new Error('Failed to load templates');
         }
+
+        // Populate the pinned My-Number footer (independent of the list).
+        populateMyNumber();
 
         // Initialize activity list
         const listContainer = document.querySelector('.list-container');

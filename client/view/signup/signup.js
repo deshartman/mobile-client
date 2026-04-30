@@ -39,8 +39,18 @@ async function postJson(url, body) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-        const err = new Error(data.error || `HTTP ${res.status}`);
+        // Build a detailed message when the server forwards a Twilio error.
+        let message = data.error || `HTTP ${res.status}`;
+        if (data.twilioCode) {
+            message += ` [Twilio ${data.twilioCode}: ${data.twilioMessage || ''}]`.trim();
+        } else if (data.reason === 'NO_NUMBERS_AVAILABLE' && data.country) {
+            message += ` (country: ${data.country})`;
+        } else if (data.reason === 'UNSUPPORTED_COUNTRY') {
+            message += ' (country not supported)';
+        }
+        const err = new Error(message);
         err.status = res.status;
+        err.detail = data;
         throw err;
     }
     return data;
