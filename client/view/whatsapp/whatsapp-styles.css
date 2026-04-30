@@ -206,7 +206,9 @@
     border-top: 1px solid var(--color-border);
     gap: 12px;
     z-index: 100;
-    max-width: 600px;
+    width: 100%;
+    max-width: min(600px, 100vw);
+    box-sizing: border-box;
     margin: 0 auto;
 }
 
@@ -292,6 +294,6 @@
 
     .message-input {
         padding: 10px;
-        font-size: 14px;
+        font-size: 16px; /* 16px minimum prevents iOS auto-zoom on focus */
     }
 }
