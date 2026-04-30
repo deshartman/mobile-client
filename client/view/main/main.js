@@ -39,6 +39,29 @@ async function loadTemplates() {
     }
 }
 
+// Wire up the QR share button + modal. Native <dialog> gives us Esc-to-close.
+function setupQrShareModal() {
+    const openButton = document.getElementById('qr-share-button');
+    const modal = document.getElementById('qr-modal');
+    const closeButton = document.getElementById('qr-modal-close');
+    const image = document.getElementById('qr-modal-image');
+    if (!openButton || !modal || !closeButton || !image) return;
+
+    openButton.addEventListener('click', () => {
+        // Cache-bust so a freshly-rotated SERVER_BASE_URL gets a fresh code.
+        image.src = `/auth/qr?t=${Date.now()}`;
+        modal.showModal();
+    });
+
+    closeButton.addEventListener('click', () => modal.close());
+
+    // Click outside the panel closes. <dialog>'s click target is the dialog
+    // element itself when the backdrop is clicked.
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.close();
+    });
+}
+
 // Populate the pinned "My Number" footer from the server. Runs once on load.
 async function populateMyNumber() {
     const el = document.getElementById('my-number-value');
@@ -79,6 +102,7 @@ async function initializeApp() {
 
         // Populate the pinned My-Number footer (independent of the list).
         populateMyNumber();
+        setupQrShareModal();
 
         // Initialize activity list
         const listContainer = document.querySelector('.list-container');
