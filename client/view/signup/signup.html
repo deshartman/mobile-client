@@ -1,0 +1,45 @@
+<!-- Signup / Signin View — phone-OTP flow -->
+<div class="signup-container">
+    <div class="signup-header">
+        <h1>Welcome</h1>
+        <p class="signup-subtitle">Sign in or sign up with your phone number</p>
+    </div>
+
+    <!-- Step 1: phone -->
+    <div id="signup-step-phone" class="signup-step" style="display: none;">
+        <div class="form-group">
+            <label for="phone">Phone number</label>
+            <input type="tel" id="phone" class="form-input" placeholder="+15551234567" autocomplete="tel" required>
+            <small class="signup-hint">Include country code, e.g. +1, +61</small>
+        </div>
+        <button id="signup-send-otp" class="signup-button">Send code</button>
+    </div>
+
+    <!-- Step 2: code -->
+    <div id="signup-step-code" class="signup-step" style="display: none;">
+        <div class="form-group">
+            <label for="code">Verification code</label>
+            <input type="text" id="code" class="form-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" autocomplete="one-time-code" required>
+            <small class="signup-hint">We sent a 6-digit code to <span id="signup-code-phone"></span></small>
+        </div>
+        <button id="signup-verify-otp" class="signup-button">Verify</button>
+        <button id="signup-resend" class="signup-link">Resend code</button>
+    </div>
+
+    <!-- Step 3: name (new users only) -->
+    <div id="signup-step-name" class="signup-step" style="display: none;">
+        <div class="form-group">
+            <label for="name">Your name</label>
+            <input type="text" id="name" class="form-input" placeholder="Enter your name" autocomplete="name" required>
+        </div>
+        <button id="signup-complete" class="signup-button">Continue</button>
+    </div>
+
+    <div id="signup-error" class="error-message" style="display: none;"></div>
+
+    <!-- Loading -->
+    <div id="signup-loading" class="loading-indicator" style="display: none;">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span id="signup-loading-text">Loading...</span>
+    </div>
+</div>

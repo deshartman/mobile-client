@@ -8,6 +8,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const QRCode = require('qrcode');
 
 // Environment variables
 const SERVER_BASE_URL = process.env.SERVER_BASE_URL || "localhost";
@@ -33,10 +34,12 @@ const { WebhookService } = require('./services/WebhookService');
 const { SseService } = require('./services/SseService');
 const { MessagesRepository } = require('./services/MessagesRepository');
 const { ConversationsService } = require('./services/ConversationsService');
+const { AuthService } = require('./services/AuthService');
 
 // Initialize services
 const contactService = new ContactService();
 const userService = new UserService();
+const authService = new AuthService({ userService });
 const voiceServices = new VoiceServices(userService);
 const sseService = new SseService(contactService);
 const messagesRepo = new MessagesRepository();
@@ -170,29 +173,61 @@ app.delete('/contacts/:userGuid/:contactGuid', (req, res) => {
     }
 });
 
-// User Endpoints
-app.post('/users', (req, res) => {
-    logOut('API', `POST /users - Request received with body: ${JSON.stringify(req.body)}`);
-    
+// Auth Endpoints (phone-OTP signup + signin)
+// The /signup path is the QR destination. Serve the SPA shell; index.js reads
+// window.location.pathname and loads the signup fragment from /view/signup/signup.html.
+app.get('/signup', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/index.html'));
+});
+
+app.get('/auth/qr', async (req, res) => {
     try {
-        const { email } = req.body;
-        
-        // Check if user with this email already exists
-        const existingUser = userService.getUserByEmail(email);
-        
-        if (existingUser) {
-            // Return existing user GUID
-            logOut('API', `POST /users - Returning existing user GUID: ${existingUser.userGUID} for email: ${email}`);
-            res.status(200).json({ userGUID: existingUser.userGUID });
-        } else {
-            // Create new user
-            const userGUID = userService.createUser(req.body);
-            logOut('API', `POST /users - User created with GUID: ${userGUID}`);
-            res.status(201).json({ userGUID });
-        }
+        // If SERVER_BASE_URL already has a scheme (e.g. https://…ngrok.dev), use it as-is;
+        // otherwise treat it as a bare host and append :PORT.
+        const hasScheme = /^https?:\/\//.test(SERVER_BASE_URL);
+        const origin = hasScheme ? SERVER_BASE_URL : `http://${SERVER_BASE_URL}:${PORT}`;
+        const signupUrl = `${origin.replace(/\/$/, '')}/signup`;
+        const buffer = await QRCode.toBuffer(signupUrl, { type: 'png', width: 512 });
+        res.type('png').send(buffer);
     } catch (error) {
-        logError('API', `POST /users - Error: ${error.message}`);
+        logError('API', `GET /auth/qr - Error: ${error.message}`);
         res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/auth/send-otp', async (req, res) => {
+    const { phone } = req.body || {};
+    logOut('API', `POST /auth/send-otp - phone=${phone}`);
+    try {
+        const result = await authService.requestOtp(phone);
+        res.json(result);
+    } catch (error) {
+        logError('API', `POST /auth/send-otp - Error: ${error.message}`);
+        res.status(error.status || 500).json({ error: error.message });
+    }
+});
+
+app.post('/auth/verify-otp', (req, res) => {
+    const { phone, code } = req.body || {};
+    logOut('API', `POST /auth/verify-otp - phone=${phone}`);
+    try {
+        const result = authService.verifyOtp(phone, code);
+        res.json(result);
+    } catch (error) {
+        logError('API', `POST /auth/verify-otp - Error: ${error.message}`);
+        res.status(error.status || 500).json({ error: error.message });
+    }
+});
+
+app.post('/auth/complete', (req, res) => {
+    const { phone, name } = req.body || {};
+    logOut('API', `POST /auth/complete - phone=${phone}`);
+    try {
+        const result = authService.completeAuth(phone, name);
+        res.json(result);
+    } catch (error) {
+        logError('API', `POST /auth/complete - Error: ${error.message}`);
+        res.status(error.status || 500).json({ error: error.message });
     }
 });
 
