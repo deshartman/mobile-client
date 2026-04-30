@@ -23,12 +23,23 @@ db.pragma('foreign_keys = ON');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
-    user_guid     TEXT PRIMARY KEY,
-    name          TEXT NOT NULL,
-    email         TEXT NOT NULL UNIQUE,
-    twilio_number TEXT UNIQUE,
-    active        INTEGER NOT NULL DEFAULT 1,
-    created       TEXT NOT NULL
+    user_guid         TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    phone             TEXT UNIQUE,
+    email             TEXT UNIQUE,
+    twilio_number     TEXT UNIQUE,
+    twilio_number_sid TEXT,
+    active            INTEGER NOT NULL DEFAULT 1,
+    created           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS otp_verifications (
+    phone        TEXT PRIMARY KEY,
+    code_hash    TEXT NOT NULL,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL,
+    expires_at   TEXT NOT NULL,
+    verified     INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS contacts (

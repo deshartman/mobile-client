@@ -14,24 +14,30 @@ async function validateUserSession(userGUID) {
 }
 
 /**
- * Clear session and show login view
+ * Clear session and show signup/signin view (phone-OTP flow).
  */
-async function showLoginView() {
-    console.log('Showing login view');
-    
-    // Clear all session data
+async function showSignupView() {
+    console.log('Showing signup view');
+
     sessionStorage.clear();
-    
-    // Load and inject login HTML content
-    const response = await fetch('/view/login/login.html');
+
+    const response = await fetch('/view/signup/signup.html');
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
     const html = await response.text();
     document.getElementById('app-root').innerHTML = html;
-    
-    // Import login.js after HTML content is loaded
-    await import('/view/login/login.js');
+
+    // Inject signup stylesheet if not already present
+    if (!document.querySelector('link[data-signup-css]')) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = '/view/signup/signup.css';
+        link.dataset.signupCss = 'true';
+        document.head.appendChild(link);
+    }
+
+    await import('/view/signup/signup.js');
 }
 
 /**
@@ -55,16 +61,20 @@ async function showMainView() {
 // Check if user is logged in and validate with server
 const userGUID = sessionStorage.getItem('userGUID');
 
+// When someone lands on /signup (e.g. from the QR code), always show the
+// signup/signin view — even if a stale session exists. This is the shared
+// entry point for new and returning users.
+const isSignupPath = window.location.pathname === '/signup';
+
 try {
-    if (!userGUID) {
-        // No user found, load login view
-        console.log('No userGUID found in sessionStorage, loading login view');
-        await showLoginView();
+    if (isSignupPath || !userGUID) {
+        console.log('Loading signup view (path=%s, userGUID=%s)', window.location.pathname, userGUID);
+        await showSignupView();
     } else {
         // User found in session, validate with server
         console.log('userGUID found in sessionStorage, validating with server:', userGUID);
         const isValidUser = await validateUserSession(userGUID);
-        
+
         if (isValidUser) {
             // Valid user, load main view
             await showMainView();
@@ -73,9 +83,8 @@ try {
                 window.bootstrapVoice(userGUID);
             }
         } else {
-            // Invalid user, clear session and show login
-            console.log('userGUID validation failed, clearing session and showing login');
-            await showLoginView();
+            console.log('userGUID validation failed, clearing session and showing signup');
+            await showSignupView();
         }
     }
     

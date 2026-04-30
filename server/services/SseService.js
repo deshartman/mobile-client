@@ -30,8 +30,12 @@ class SseService {
 
     broadcast(userGuid, eventName, data) {
         const userClients = this.clients.get(userGuid);
-        if (!userClients || userClients.size === 0) return;
+        if (!userClients || userClients.size === 0) {
+            logOut('SseService', `broadcast(${eventName}) to ${userGuid}: no clients connected — dropped`);
+            return;
+        }
 
+        logOut('SseService', `broadcast(${eventName}) to ${userGuid}: ${userClients.size} client(s)`);
         const payload = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
         userClients.forEach(res => {
             try {

@@ -35,15 +35,13 @@ class VoiceServices extends EventEmitter {
         this.twilioApiKey = process.env.TWILIO_API_KEY;
         this.twilioApiSecret = process.env.TWILIO_API_SECRET;
         this.twimlAppSid = process.env.TWIML_APP_SID;
-        this.twilioCallerId = process.env.TWILIO_CALLER_ID;
         this.twilioRegion = process.env.TWILIO_REGION;
 
         const requiredVars = [
             { name: 'TWILIO_ACCOUNT_SID', value: this.twilioAccountSid },
             { name: 'TWILIO_API_KEY', value: this.twilioApiKey },
             { name: 'TWILIO_API_SECRET', value: this.twilioApiSecret },
-            { name: 'TWIML_APP_SID', value: this.twimlAppSid },
-            { name: 'TWILIO_CALLER_ID', value: this.twilioCallerId }
+            { name: 'TWIML_APP_SID', value: this.twimlAppSid }
         ];
 
         const missingVars = requiredVars.filter(v => !v.value);
@@ -175,13 +173,38 @@ class VoiceServices extends EventEmitter {
         if (!phoneNumber) {
             throw new Error('Missing phoneNumber/To for phone destination');
         }
-        if (!this.twilioCallerId) {
-            throw new Error('Missing TWILIO_CALLER_ID — required as caller ID for outbound PSTN dials');
+
+        // Caller ID must be the caller's provisioned twilio_number. No fallback.
+        if (!params.userGuid) {
+            throw new Error('Missing userGuid — required to resolve caller ID');
+        }
+        const user = this.userService.getUser(params.userGuid);
+        if (!user || !user.twilioNumber) {
+            throw new Error(`User ${params.userGuid} has no twilio_number provisioned — cannot place outbound call`);
+        }
+        const callerId = user.twilioNumber;
+
+        // Configure status callback so /webhooks/voice/status fires and the
+        // activity log picks up call completion + duration.
+        const serverBaseUrl = process.env.SERVER_BASE_URL;
+        const dialOpts = { callerId };
+        if (serverBaseUrl) {
+            const hasScheme = /^https?:\/\//.test(serverBaseUrl);
+            const origin = hasScheme ? serverBaseUrl.replace(/\/$/, '') : `http://${serverBaseUrl}`;
+            dialOpts.action = `${origin}/webhooks/voice/status`;
         }
 
-        logOut('VoiceServices', `Dialing phone: ${phoneNumber} (callerId=${this.twilioCallerId})`);
-        const dial = voiceResponse.dial({ callerId: this.twilioCallerId });
-        dial.number(phoneNumber);
+        logOut('VoiceServices', `Dialing phone: ${phoneNumber} (callerId=${callerId}, statusCb=${dialOpts.action || 'none'})`);
+        const dial = voiceResponse.dial(dialOpts);
+        const numberOpts = {};
+        if (serverBaseUrl) {
+            const hasScheme = /^https?:\/\//.test(serverBaseUrl);
+            const origin = hasScheme ? serverBaseUrl.replace(/\/$/, '') : `http://${serverBaseUrl}`;
+            numberOpts.statusCallback = `${origin}/webhooks/voice/status`;
+            numberOpts.statusCallbackEvent = 'initiated ringing answered completed';
+            numberOpts.statusCallbackMethod = 'POST';
+        }
+        dial.number(numberOpts, phoneNumber);
     }
 
     _buildAssistantTwiml(voiceResponse, params) {

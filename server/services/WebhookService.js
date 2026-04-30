@@ -50,29 +50,39 @@ class WebhookService {
      * Only 'completed' triggers activity creation.
      */
     handleVoiceStatus(payload) {
-        const { CallSid, CallStatus, CallDuration } = payload;
+        const { CallSid, CallStatus, CallDuration, DialCallStatus, DialCallDuration } = payload;
         const mapping = this.callMap.get(CallSid);
 
         if (!mapping) {
-            logError('WebhookService', `Voice webhook for unknown CallSid: ${CallSid}`);
+            // Child legs of a <Dial> also POST to our status callback but aren't
+            // registered (we only register the parent CallSid). Safe to ignore.
+            logOut('WebhookService', `Voice webhook for unregistered CallSid: ${CallSid} (CallStatus=${CallStatus}, DialCallStatus=${DialCallStatus || 'n/a'})`);
             return;
         }
 
-        logOut('WebhookService', `Voice status for ${CallSid}: ${CallStatus}`);
+        logOut('WebhookService', `Voice status for ${CallSid}: CallStatus=${CallStatus}, DialCallStatus=${DialCallStatus || 'n/a'}`);
 
-        if (CallStatus === 'completed') {
-            const durationSeconds = parseInt(CallDuration, 10) || Math.round((Date.now() - mapping.startedAt) / 1000);
-            const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
+        // Two paths end an outbound call:
+        //  1. CallStatus=completed — the parent leg fully ended.
+        //  2. DialCallStatus=completed on the parent while CallStatus=in-progress —
+        //     the dialed leg completed. Twilio surfaces DialCallDuration here.
+        const dialFinished = DialCallStatus === 'completed';
+        const parentFinished = CallStatus === 'completed';
+        if (!dialFinished && !parentFinished) return;
 
-            this.contactService.addActivity(mapping.userGuid, {
-                type: 'Phone',
-                datetime: new Date().toISOString(),
-                duration: durationMinutes,
-                identityValue: mapping.to,
-                contactGuid: mapping.contactGuid
-            });
-            this.callMap.delete(CallSid);
-        }
+        const rawSeconds = parseInt(DialCallDuration, 10)
+            || parseInt(CallDuration, 10)
+            || Math.round((Date.now() - mapping.startedAt) / 1000);
+        const durationMinutes = Math.max(1, Math.round(rawSeconds / 60));
+
+        this.contactService.addActivity(mapping.userGuid, {
+            type: 'Phone',
+            datetime: new Date().toISOString(),
+            duration: durationMinutes,
+            identityValue: mapping.to,
+            contactGuid: mapping.contactGuid
+        });
+        this.callMap.delete(CallSid);
     }
 
     /**
