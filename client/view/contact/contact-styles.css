@@ -181,35 +181,77 @@ body {
     gap: 0.5rem;
 }
 
-#identitiesContainer .form-group label::before {
+/* Direct-child label only — the "Also SMS" checkbox label is nested deeper
+   inside the Phone row, and we don't want it to inherit the Phone glyph. */
+#identitiesContainer .form-group > label::before {
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
     font-size: 1rem;
     color: #007AFF;
 }
 
-#identitiesContainer .form-group[data-type="Phone"] label::before {
+#identitiesContainer .form-group[data-type="Phone"] > label::before {
     content: "\f095";
 }
 
-#identitiesContainer .form-group[data-type="Message"] label::before {
-    content: "\f0e0";
+/* Message = SMS, shown with the same comment icon the main-screen row uses. */
+#identitiesContainer .form-group[data-type="Message"] > label::before {
+    content: "\f075";
 }
 
-#identitiesContainer .form-group[data-type="WhatsApp"] label::before {
+/* WhatsApp is a Brand glyph, so switch families + weight on this one row. */
+#identitiesContainer .form-group[data-type="WhatsApp"] > label::before {
+    font-family: 'Font Awesome 6 Brands', sans-serif;
+    font-weight: 400;
     content: "\f232";
 }
 
-#identitiesContainer .form-group[data-type="SIP"] label::before {
+#identitiesContainer .form-group[data-type="SIP"] > label::before {
     content: "\f095";
 }
 
-#identitiesContainer .form-group[data-type="Client"] label::before {
+#identitiesContainer .form-group[data-type="Client"] > label::before {
     content: "\f007";
 }
 
+/* Phone row with the "Also SMS" checkbox on the right. */
+#identitiesContainer .form-group[data-type="Phone"] .phone-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+#identitiesContainer .form-group[data-type="Phone"] .phone-row input[type="text"] {
+    flex: 1;
+}
+
+.also-sms-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: #555;
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+}
+
+.also-sms-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Readonly SMS input (when "Also SMS" is ticked) gets a muted look so it's
+   visually obvious the value is mirrored from Phone. */
+#identitiesContainer .form-group[data-type="Message"] input[readonly] {
+    background-color: #f5f5f5;
+    color: #666;
+}
+
 #identitiesContainer .form-group input {
-    padding-left: 2.5rem;
+    padding-left: 0.8rem;
 }
 
 #identitiesContainer .form-group input:required {

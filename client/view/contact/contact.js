@@ -32,15 +32,28 @@ function getUrlParams() {
     };
 }
 
-// Function to create an identity input field
-function createIdentityField(identity) {
+// Human-facing labels. The underlying identity.type is still "Message" (SMS)
+// so the server contract is unchanged.
+const IDENTITY_LABELS = {
+    Phone: 'Phone',
+    Message: 'SMS',
+    WhatsApp: 'WhatsApp',
+    SIP: 'SIP',
+    Client: 'Client'
+};
+
+// Function to create an identity input field.
+// The Phone row additionally renders an "Also SMS" checkbox that, when ticked,
+// keeps the Message row's value mirrored + readonly. The Message row itself is
+// always rendered; its editability depends on the Phone row's checkbox state.
+function createIdentityField(identity, options = {}) {
     const container = document.createElement('div');
     container.className = 'form-group';
     container.setAttribute('data-type', identity.type);
 
     const label = document.createElement('label');
     label.htmlFor = identity.type.toLowerCase();
-    label.textContent = identity.type;
+    label.textContent = IDENTITY_LABELS[identity.type] || identity.type;
     container.appendChild(label);
 
     const input = document.createElement('input');
@@ -52,25 +65,83 @@ function createIdentityField(identity) {
     if (identity.type === IdentityType.Phone) {
         input.required = true;
     }
-    container.appendChild(input);
+
+    if (identity.type === IdentityType.Phone) {
+        // Phone input + "Also SMS" checkbox share a row.
+        const row = document.createElement('div');
+        row.className = 'phone-row';
+        row.appendChild(input);
+
+        const toggleLabel = document.createElement('label');
+        toggleLabel.className = 'also-sms-toggle';
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.id = 'alsoSmsToggle';
+        toggle.checked = options.alsoSmsChecked !== false; // default on
+        const toggleText = document.createElement('span');
+        toggleText.textContent = 'SMS';
+        toggleLabel.appendChild(toggle);
+        toggleLabel.appendChild(toggleText);
+        row.appendChild(toggleLabel);
+
+        container.appendChild(row);
+    } else {
+        container.appendChild(input);
+    }
 
     return container;
 }
 
-// Function to handle image upload
-function handleImageUpload(event) {
-    const file = event.target.files[0];
-    if (file && file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            const profileImage = document.getElementById('profileImage');
-            const defaultIcon = document.querySelector('.default-icon');
+// Downscale the uploaded image to a 256px square JPEG. A phone camera photo
+// can be several MB as a base64 data URL, which trips Express's default 100KB
+// body limit AND bloats every /contacts response that carries it. 256px @ 0.85
+// quality renders fine at 44px avatar size (even on retina) and typically
+// comes out under 40KB.
+const AVATAR_MAX_PX = 256;
+const AVATAR_JPEG_QUALITY = 0.85;
 
-            profileImage.src = e.target.result;
-            profileImage.style.display = 'block';
-            defaultIcon.style.display = 'none';
-        };
+async function downscaleImageToDataUrl(file) {
+    const originalUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(file);
+    });
+
+    const img = await new Promise((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => reject(new Error('Image decode failed'));
+        i.src = originalUrl;
+    });
+
+    // Cover-crop to a square so the circular avatar never shows letterboxing.
+    const side = Math.min(img.width, img.height);
+    const sx = (img.width - side) / 2;
+    const sy = (img.height - side) / 2;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = AVATAR_MAX_PX;
+    canvas.height = AVATAR_MAX_PX;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, AVATAR_MAX_PX, AVATAR_MAX_PX);
+    return canvas.toDataURL('image/jpeg', AVATAR_JPEG_QUALITY);
+}
+
+async function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file?.type.startsWith('image/')) return;
+
+    try {
+        const dataUrl = await downscaleImageToDataUrl(file);
+        const profileImage = document.getElementById('profileImage');
+        const defaultIcon = document.querySelector('.default-icon');
+        profileImage.src = dataUrl;
+        profileImage.style.display = 'block';
+        defaultIcon.style.display = 'none';
+    } catch (err) {
+        console.error('[Contact] Image downscale failed:', err);
+        showError('Could not process that image. Try another file.');
     }
 }
 
@@ -244,6 +315,12 @@ function clearForm() {
     identityInputs.forEach(input => {
         input.value = '';
     });
+
+    // Reset "Also SMS" to its default (ticked, SMS mirrors Phone = both empty).
+    const toggle = document.getElementById('alsoSmsToggle');
+    const smsInput = document.getElementById('message');
+    if (toggle) toggle.checked = true;
+    if (smsInput) smsInput.readOnly = true;
     
     // Reset profile image
     const profileImage = document.getElementById('profileImage');
@@ -282,14 +359,23 @@ function populateForm() {
         identitiesContainer.removeChild(identitiesContainer.firstChild);
     }
 
+    // Compute initial "Also SMS" state: tick it when SMS is empty or matches
+    // Phone — otherwise it's a distinct number, leave unticked so the user can
+    // see/edit both values.
+    const phoneVal = (params.identities || []).find(id => id.type === IdentityType.Phone)?.value || '';
+    const smsVal = (params.identities || []).find(id => id.type === IdentityType.Message)?.value || '';
+    const alsoSmsChecked = !smsVal || smsVal === phoneVal;
+
     // Create fields for all possible identity types
     Object.values(IdentityType).forEach(type => {
         const identity = (params.identities || []).find(id =>
             id.type.toLowerCase() === type.toLowerCase()
         ) || { type, value: '' };
-        const field = createIdentityField(identity);
+        const field = createIdentityField(identity, { alsoSmsChecked });
         identitiesContainer.appendChild(field);
     });
+
+    wireAlsoSmsToggle(alsoSmsChecked);
 
     // Seed the photo preview for existing contacts — URL params can't carry
     // data URLs, so we fetch the full contact.
@@ -298,6 +384,38 @@ function populateForm() {
             console.warn('[Contact] Could not load photo:', err.message);
         });
     }
+}
+
+// Keep the SMS input mirrored from Phone when the "Also SMS" checkbox is
+// ticked. When unticked, SMS becomes a free-text field for a second number.
+function wireAlsoSmsToggle(initialChecked) {
+    const toggle = document.getElementById('alsoSmsToggle');
+    const phoneInput = document.getElementById('phone');
+    const smsInput = document.getElementById('message');
+    if (!toggle || !phoneInput || !smsInput) return;
+
+    const applyMirrorState = () => {
+        if (toggle.checked) {
+            smsInput.value = phoneInput.value;
+            smsInput.readOnly = true;
+        } else {
+            smsInput.readOnly = false;
+        }
+    };
+
+    // Apply initial state. When ticked, this seeds SMS from Phone — the
+    // Message field was rendered with its stored value (often empty) and
+    // needs to be mirrored now, not only on subsequent toggle changes.
+    applyMirrorState();
+
+    toggle.addEventListener('change', () => {
+        markFormAsTouched();
+        applyMirrorState();
+    });
+
+    phoneInput.addEventListener('input', () => {
+        if (toggle.checked) smsInput.value = phoneInput.value;
+    });
 }
 
 async function seedPhotoFromServer(contactGuid) {
