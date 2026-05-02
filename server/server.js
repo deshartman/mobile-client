@@ -97,6 +97,20 @@ app.get('/activities/:userGuid', (req, res) => {
     }
 });
 
+app.get('/activities/:userGuid/by-contact/:contactGuid', (req, res) => {
+    const { userGuid, contactGuid } = req.params;
+    logOut('API', `GET /activities/${userGuid}/by-contact/${contactGuid} - Request received`);
+
+    try {
+        const activities = contactService.getActivities(userGuid, contactGuid);
+        logOut('API', `GET /activities/${userGuid}/by-contact/${contactGuid} - Returning ${activities ? activities.length : 0} activities`);
+        res.json(activities);
+    } catch (error) {
+        logError('API', `GET /activities/${userGuid}/by-contact/${contactGuid} - Error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/activities/:userGuid', (req, res) => {
     const userGuid = req.params.userGuid;
     logOut('API', `POST /activities/${userGuid} - Request received with body: ${JSON.stringify(req.body)}`);

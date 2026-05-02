@@ -85,6 +85,18 @@ class ActivityListItem {
             return;
         }
 
+        if (action === 'history') {
+            const contactGuid = this.activity.contact?.guid;
+            if (!contactGuid) {
+                // No contact associated with this activity — nothing to show history for.
+                return;
+            }
+            sessionStorage.setItem('currentContact', JSON.stringify(this.activity.contact));
+            sessionStorage.setItem('contactTimestamp', Date.now().toString());
+            window.location.href = `view/history/history.html?contactGuid=${encodeURIComponent(contactGuid)}`;
+            return;
+        }
+
         const identity = this.activity.contact?.identities.find(id =>
             id.type.toLowerCase() === action
         ) || { value: this.activity.identityValue };

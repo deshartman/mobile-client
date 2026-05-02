@@ -57,6 +57,9 @@ class ContactService extends EventEmitter {
         this._selectActivitiesForUser = db.prepare(
             'SELECT * FROM activities WHERE user_guid = ? ORDER BY datetime DESC'
         );
+        this._selectActivitiesForUserAndContact = db.prepare(
+            'SELECT * FROM activities WHERE user_guid = ? AND contact_guid = ? ORDER BY datetime DESC'
+        );
         this._insertActivity = db.prepare(
             'INSERT INTO activities (id, user_guid, type, datetime, duration, identity_value, contact_guid) VALUES (?, ?, ?, ?, ?, ?, ?)'
         );
@@ -132,8 +135,10 @@ class ContactService extends EventEmitter {
         return deleted;
     }
 
-    getActivities(userGUID) {
-        const rows = this._selectActivitiesForUser.all(userGUID);
+    getActivities(userGUID, contactGuid) {
+        const rows = contactGuid
+            ? this._selectActivitiesForUserAndContact.all(userGUID, contactGuid)
+            : this._selectActivitiesForUser.all(userGUID);
         return rows.map(r => ({
             id: r.id,
             type: r.type,
