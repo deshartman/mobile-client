@@ -131,28 +131,6 @@ async function initializeApp() {
         addButton.addEventListener('click', () => {
             window.location.href = 'view/contact/contact.html';
         });
-
-        // Add refresh button functionality if it exists
-        const refreshButton = document.querySelector('.refresh-button');
-        if (refreshButton) {
-            refreshButton.addEventListener('click', async () => {
-                // Add loading state
-                const refreshIcon = refreshButton.querySelector('i');
-                refreshButton.classList.add('loading');
-                refreshButton.disabled = true;
-
-                try {
-                    // Fetch fresh data
-                    await activityList.fetchData(true);
-                } catch (error) {
-                    console.error('Error refreshing data:', error);
-                } finally {
-                    // Remove loading state
-                    refreshButton.classList.remove('loading');
-                    refreshButton.disabled = false;
-                }
-            });
-        }
     } catch (error) {
         console.error('Error initializing app:', error);
         // Show error to user

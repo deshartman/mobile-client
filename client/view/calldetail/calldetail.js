@@ -1,70 +1,19 @@
-// Call detail placeholder. Fetches /activities/:userGuid/by-contact/:contactGuid,
-// filters to type === 'Phone', renders datetime + duration per row. No click
-// handlers in Phase 1.
+// Call detail — single call view. Reads ?activityId + (contactGuid|identityValue)
+// from the URL, fetches the contact's activities, finds the one matching the
+// activity id, and shows its date/time at the top. Body is intentionally blank
+// for now; transcription, actions, recordings will land here later.
 
 (function () {
     function formatDateTime(datetime) {
         const date = new Date(datetime);
         return date.toLocaleString('en-US', {
-            hour: 'numeric',
-            minute: 'numeric',
-            hour12: true,
+            weekday: 'short',
             month: 'short',
-            day: 'numeric'
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
         });
-    }
-
-    function formatDuration(minutes) {
-        if (minutes < 60) {
-            return `${minutes} mins`;
-        }
-        const hours = Math.floor(minutes / 60);
-        const remainingMinutes = minutes % 60;
-        if (remainingMinutes === 0) {
-            return `${hours} hour${hours > 1 ? 's' : ''}`;
-        }
-        return `${hours} hour${hours > 1 ? 's' : ''} ${remainingMinutes} mins`;
-    }
-
-    function renderRow(activity) {
-        const row = document.createElement('div');
-        row.className = 'list-item';
-        row.style.cursor = 'default';
-
-        const iconWrap = document.createElement('div');
-        iconWrap.className = 'list-item-icon';
-        const icon = document.createElement('i');
-        icon.className = 'fas fa-phone';
-        iconWrap.appendChild(icon);
-
-        const content = document.createElement('div');
-        content.className = 'list-item-content';
-        const wrapper = document.createElement('div');
-        wrapper.className = 'content-wrapper';
-        const titleRow = document.createElement('div');
-        titleRow.className = 'title-row';
-        const title = document.createElement('div');
-        title.className = 'list-item-title';
-        title.textContent = formatDateTime(activity.datetime);
-        titleRow.appendChild(title);
-        const subtitle = document.createElement('div');
-        subtitle.className = 'list-item-subtitle';
-        subtitle.textContent = activity.identityValue || '';
-        wrapper.appendChild(titleRow);
-        wrapper.appendChild(subtitle);
-        content.appendChild(wrapper);
-
-        const info = document.createElement('div');
-        info.className = 'list-item-info';
-        const duration = document.createElement('div');
-        duration.className = 'list-item-duration';
-        duration.textContent = formatDuration(activity.duration || 0);
-        info.appendChild(duration);
-
-        row.appendChild(iconWrap);
-        row.appendChild(content);
-        row.appendChild(info);
-        return row;
     }
 
     function setContactNameFromSession() {
@@ -89,31 +38,49 @@
         });
 
         const params = new URLSearchParams(window.location.search);
+        const activityId = params.get('activityId');
         const contactGuid = params.get('contactGuid');
+        const identityValue = params.get('identityValue');
         const userGuid = sessionStorage.getItem('userGuid') || sessionStorage.getItem('userGUID');
 
-        const listEl = document.getElementById('call-list');
+        const datetimeEl = document.getElementById('call-datetime');
 
-        if (!contactGuid || !userGuid) {
-            listEl.innerHTML = '<div class="empty-state">Missing contact or user context.</div>';
+        if (!activityId || (!contactGuid && !identityValue) || !userGuid) {
+            datetimeEl.textContent = '';
             return;
         }
 
+        const url = contactGuid
+            ? `/activities/${encodeURIComponent(userGuid)}/by-contact/${encodeURIComponent(contactGuid)}`
+            : `/activities/${encodeURIComponent(userGuid)}/by-identity/${encodeURIComponent(identityValue)}`;
+
         try {
-            const resp = await fetch(`/activities/${encodeURIComponent(userGuid)}/by-contact/${encodeURIComponent(contactGuid)}`);
-            if (!resp.ok) {
-                throw new Error(`HTTP ${resp.status}`);
-            }
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const activities = await resp.json();
-            const calls = (Array.isArray(activities) ? activities : []).filter(a => a.type === 'Phone');
-            if (calls.length === 0) {
-                listEl.innerHTML = '<div class="empty-state">No calls yet for this contact.</div>';
+            const activity = Array.isArray(activities)
+                ? activities.find(a => a.id === activityId)
+                : null;
+            if (!activity) {
+                datetimeEl.textContent = '';
                 return;
             }
-            calls.forEach(a => listEl.appendChild(renderRow(a)));
+            datetimeEl.textContent = formatDateTime(activity.datetime);
+
+            // If the caller didn't pre-seed the header from sessionStorage
+            // (unknown-number path), use the activity's enriched contact.
+            const nameEl = document.getElementById('contact-name');
+            if (nameEl.textContent === 'Call') {
+                if (activity.contact) {
+                    const full = `${activity.contact.firstName || ''} ${activity.contact.lastName || ''}`.trim();
+                    if (full) nameEl.textContent = full;
+                } else if (activity.identityValue) {
+                    nameEl.textContent = activity.identityValue;
+                }
+            }
         } catch (err) {
-            console.error('[CallDetail] Failed to load calls:', err);
-            listEl.innerHTML = '<div class="empty-state">Failed to load call details.</div>';
+            console.error('[CallDetail] Failed to load call:', err);
+            datetimeEl.textContent = '';
         }
     }
 

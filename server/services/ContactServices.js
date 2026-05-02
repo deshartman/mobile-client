@@ -21,6 +21,7 @@ const rowToContact = (row, identities) => {
         firstName: row.first_name,
         lastName: row.last_name,
         company: row.company,
+        photoData: row.photo_data || null,
         identities: identities || []
     };
 };
@@ -39,7 +40,7 @@ class ContactService extends EventEmitter {
             'SELECT type, value FROM contact_identities WHERE contact_guid = ? ORDER BY id'
         );
         this._insertContact = db.prepare(
-            'INSERT INTO contacts (contact_guid, user_guid, first_name, last_name, company) VALUES (?, ?, ?, ?, ?)'
+            'INSERT INTO contacts (contact_guid, user_guid, first_name, last_name, company, photo_data) VALUES (?, ?, ?, ?, ?, ?)'
         );
         this._deleteContact = db.prepare(
             'DELETE FROM contacts WHERE user_guid = ? AND contact_guid = ?'
@@ -51,7 +52,7 @@ class ContactService extends EventEmitter {
             'DELETE FROM contact_identities WHERE contact_guid = ?'
         );
         this._updateContactFields = db.prepare(
-            'UPDATE contacts SET first_name = ?, last_name = ?, company = ? WHERE user_guid = ? AND contact_guid = ?'
+            'UPDATE contacts SET first_name = ?, last_name = ?, company = ?, photo_data = ? WHERE user_guid = ? AND contact_guid = ?'
         );
 
         this._selectActivitiesForUser = db.prepare(
@@ -59,6 +60,9 @@ class ContactService extends EventEmitter {
         );
         this._selectActivitiesForUserAndContact = db.prepare(
             'SELECT * FROM activities WHERE user_guid = ? AND contact_guid = ? ORDER BY datetime DESC'
+        );
+        this._selectActivitiesForUserAndIdentity = db.prepare(
+            'SELECT * FROM activities WHERE user_guid = ? AND contact_guid IS NULL AND identity_value = ? ORDER BY datetime DESC'
         );
         this._insertActivity = db.prepare(
             'INSERT INTO activities (id, user_guid, type, datetime, duration, identity_value, contact_guid) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -89,7 +93,14 @@ class ContactService extends EventEmitter {
         const identities = Array.isArray(contact.identities) ? contact.identities : [];
 
         const tx = db.transaction(() => {
-            this._insertContact.run(guid, userGUID, contact.firstName || null, contact.lastName || null, contact.company || null);
+            this._insertContact.run(
+                guid,
+                userGUID,
+                contact.firstName || null,
+                contact.lastName || null,
+                contact.company || null,
+                contact.photoData || null
+            );
             identities.forEach(i => this._insertIdentity.run(guid, i.type, i.value));
         });
         tx();
@@ -112,6 +123,7 @@ class ContactService extends EventEmitter {
                 contact.firstName ?? existing.first_name,
                 contact.lastName ?? existing.last_name,
                 contact.company ?? existing.company,
+                contact.photoData !== undefined ? contact.photoData : existing.photo_data,
                 userGUID,
                 contactGUID
             );
@@ -135,10 +147,19 @@ class ContactService extends EventEmitter {
         return deleted;
     }
 
-    getActivities(userGUID, contactGuid) {
-        const rows = contactGuid
-            ? this._selectActivitiesForUserAndContact.all(userGUID, contactGuid)
-            : this._selectActivitiesForUser.all(userGUID);
+    getActivities(userGUID, filter) {
+        // filter can be a contact guid string (legacy), or an object
+        // { contactGuid } or { identityValue } for unknown-number grouping.
+        let rows;
+        const contactGuid = typeof filter === 'string' ? filter : filter?.contactGuid;
+        const identityValue = typeof filter === 'object' ? filter?.identityValue : null;
+        if (contactGuid) {
+            rows = this._selectActivitiesForUserAndContact.all(userGUID, contactGuid);
+        } else if (identityValue) {
+            rows = this._selectActivitiesForUserAndIdentity.all(userGUID, identityValue);
+        } else {
+            rows = this._selectActivitiesForUser.all(userGUID);
+        }
         return rows.map(r => ({
             id: r.id,
             type: r.type,

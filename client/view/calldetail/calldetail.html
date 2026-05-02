@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Call Details - Mobile App</title>
     <link rel="stylesheet" href="/styles.css">
-    <link rel="stylesheet" href="/components/ActivityListItem/ActivityListItem.css">
     <link rel="stylesheet" href="/view/calldetail/calldetail.css">
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -13,15 +12,15 @@
 <body>
     <div class="app-container">
         <div class="top-row">
-            <button class="back-button" id="back-button">
+            <button class="back-button" id="back-button" aria-label="Back">
                 <i class="fas fa-arrow-left"></i>
             </button>
-            <div class="top-title" id="contact-name">Call Details</div>
+            <div class="top-title" id="contact-name">Call</div>
         </div>
 
-        <div class="placeholder-notice">Placeholder view — call details coming soon.</div>
-
-        <div class="list-container" id="call-list"></div>
+        <div class="call-detail-body">
+            <div class="call-datetime" id="call-datetime"></div>
+        </div>
     </div>
     <script src="calldetail.js"></script>
 </body>

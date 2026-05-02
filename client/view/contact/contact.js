@@ -110,6 +110,14 @@ async function handleSubmit() {
     const existingGuid = getUrlParams().guid;
     const isNewContact = !existingGuid;
     
+    // Pick up the uploaded photo (data URL). When the user hasn't uploaded
+    // anything the <img> stays display:none with an empty src, so we treat
+    // "no src / empty src" as "leave the existing photo alone" on edit.
+    const profileImageEl = document.getElementById('profileImage');
+    const photoData = profileImageEl && profileImageEl.style.display !== 'none' && profileImageEl.src
+        ? profileImageEl.src
+        : undefined;
+
     // Create contact object
     const contact = {
         guid: existingGuid || `contact-${Date.now()}`,
@@ -118,6 +126,7 @@ async function handleSubmit() {
         company,
         identities
     };
+    if (photoData !== undefined) contact.photoData = photoData;
 
     try {
         // Get userGUID from sessionStorage
@@ -281,24 +290,61 @@ function populateForm() {
         const field = createIdentityField(identity);
         identitiesContainer.appendChild(field);
     });
+
+    // Seed the photo preview for existing contacts — URL params can't carry
+    // data URLs, so we fetch the full contact.
+    if (params.guid) {
+        seedPhotoFromServer(params.guid).catch(err => {
+            console.warn('[Contact] Could not load photo:', err.message);
+        });
+    }
+}
+
+async function seedPhotoFromServer(contactGuid) {
+    const userGUID = sessionStorage.getItem('userGUID');
+    if (!userGUID) return;
+    const resp = await fetch(`/contacts/${userGUID}/${contactGuid}`);
+    if (!resp.ok) return;
+    const contact = await resp.json();
+    if (!contact || !contact.photoData) return;
+    const profileImage = document.getElementById('profileImage');
+    const defaultIcon = document.querySelector('.default-icon');
+    if (profileImage) {
+        profileImage.src = contact.photoData;
+        profileImage.style.display = 'block';
+    }
+    if (defaultIcon) {
+        defaultIcon.style.display = 'none';
+    }
 }
 
 // Function to set up all event listeners
 function setupEventListeners() {
-    // Handle back button with save
+    // Handle back button with save. If we were opened from the Activity view
+    // (via ?from=activity) go back there; otherwise default to the main screen.
     const backButton = document.querySelector('.back-button');
     backButton.addEventListener('click', async (e) => {
         console.info('Back button clicked...');
         e.preventDefault();
         e.stopPropagation();
-        
+
         // Show loading state
         backButton.disabled = true;
         backButton.textContent = 'Saving...';
-        
+
         try {
             const success = await handleSubmit();
             if (success) {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('from') === 'activity') {
+                    const qs = new URLSearchParams();
+                    const fromContactGuid = params.get('fromContactGuid');
+                    const fromIdentityValue = params.get('fromIdentityValue');
+                    if (fromContactGuid) qs.set('contactGuid', fromContactGuid);
+                    else if (fromIdentityValue) qs.set('identityValue', fromIdentityValue);
+                    window.location.href = `/view/history/history.html?${qs.toString()}`;
+                    return;
+                }
                 window.location.href = '/index.html';
             }
         } finally {
