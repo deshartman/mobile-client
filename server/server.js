@@ -97,6 +97,37 @@ app.get('/activities/:userGuid', (req, res) => {
     }
 });
 
+app.get('/activities/:userGuid/by-contact/:contactGuid', (req, res) => {
+    const { userGuid, contactGuid } = req.params;
+    logOut('API', `GET /activities/${userGuid}/by-contact/${contactGuid} - Request received`);
+
+    try {
+        const activities = contactService.getActivities(userGuid, { contactGuid });
+        logOut('API', `GET /activities/${userGuid}/by-contact/${contactGuid} - Returning ${activities ? activities.length : 0} activities`);
+        res.json(activities);
+    } catch (error) {
+        logError('API', `GET /activities/${userGuid}/by-contact/${contactGuid} - Error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Unknown-number group: list activities that have no linked contact and match
+// the given identity value (phone / address). Used by the Activity view when a
+// user taps the drawer on a row whose inbound number isn't yet in contacts.
+app.get('/activities/:userGuid/by-identity/:identityValue', (req, res) => {
+    const { userGuid, identityValue } = req.params;
+    logOut('API', `GET /activities/${userGuid}/by-identity/${identityValue} - Request received`);
+
+    try {
+        const activities = contactService.getActivities(userGuid, { identityValue });
+        logOut('API', `GET /activities/${userGuid}/by-identity/${identityValue} - Returning ${activities ? activities.length : 0} activities`);
+        res.json(activities);
+    } catch (error) {
+        logError('API', `GET /activities/${userGuid}/by-identity/${identityValue} - Error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/activities/:userGuid', (req, res) => {
     const userGuid = req.params.userGuid;
     logOut('API', `POST /activities/${userGuid} - Request received with body: ${JSON.stringify(req.body)}`);

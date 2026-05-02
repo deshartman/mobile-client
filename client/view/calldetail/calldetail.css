@@ -1,0 +1,61 @@
+/* Call detail — single call view. Mostly blank for now; placeholder for
+   transcription, actions, recordings to land later. */
+
+.top-row {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    background-color: var(--color-white);
+    border-bottom: 1px solid var(--color-border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.back-button {
+    background: none;
+    border: none;
+    padding: 12px;
+    margin-right: 8px;
+    cursor: pointer;
+    color: var(--color-text);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+}
+
+.back-button:hover {
+    background-color: var(--color-background);
+}
+
+.back-button i {
+    font-size: 20px;
+}
+
+.top-title {
+    flex: 1;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--color-text);
+    padding-right: 40px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.call-detail-body {
+    flex: 1;
+    padding: 24px 16px;
+    background-color: var(--color-white);
+    overflow-y: auto;
+}
+
+.call-datetime {
+    font-size: 16px;
+    color: var(--color-text);
+    font-weight: 500;
+}

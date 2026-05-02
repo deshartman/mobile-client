@@ -31,6 +31,14 @@
     font-size: 18px;
 }
 
+/* When the contact has uploaded a photo, the <i> is replaced with this <img>. */
+.list-item-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
 .list-item-content {
     flex: 1;
     min-width: 0;

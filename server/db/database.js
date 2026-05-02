@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS contacts (
     user_guid     TEXT NOT NULL REFERENCES users(user_guid) ON DELETE CASCADE,
     first_name    TEXT,
     last_name     TEXT,
-    company       TEXT
+    company       TEXT,
+    photo_data    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_guid);
 
@@ -96,6 +97,14 @@ CREATE INDEX IF NOT EXISTS idx_messages_conv_dt
 `;
 
 db.exec(SCHEMA);
+
+// Additive migration: contacts.photo_data for older databases that were
+// created before this column existed. Idempotent via PRAGMA lookup.
+const contactCols = db.prepare(`PRAGMA table_info(contacts)`).all();
+if (!contactCols.some(c => c.name === 'photo_data')) {
+    logOut('DB', 'Migrating contacts table: adding photo_data column');
+    db.exec('ALTER TABLE contacts ADD COLUMN photo_data TEXT');
+}
 
 logOut('DB', `Database ready at ${DB_PATH}`);
 

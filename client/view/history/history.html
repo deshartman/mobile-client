@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Activity - Mobile App</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/components/ActivityListItem/ActivityListItem.css">
+    <link rel="stylesheet" href="/view/history/history.css">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="activity-header">
+            <button class="back-button" id="back-button" aria-label="Back">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <div class="activity-avatar" id="activity-avatar">
+                <!-- Filled by history.js: <img> if photoData else initials -->
+            </div>
+            <div class="activity-identity">
+                <div class="activity-name" id="activity-name"></div>
+                <div class="activity-meta" id="activity-meta"></div>
+            </div>
+            <button class="edit-button" id="edit-button">Edit</button>
+        </div>
+
+        <div class="list-container" id="history-list"></div>
+    </div>
+    <script src="history.js"></script>
+</body>
+</html>

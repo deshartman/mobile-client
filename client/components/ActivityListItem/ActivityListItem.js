@@ -85,6 +85,23 @@ class ActivityListItem {
             return;
         }
 
+        if (action === 'history') {
+            const contactGuid = this.activity.contact?.guid || '';
+            const identityValue = this.activity.identityValue || '';
+            if (this.activity.contact) {
+                sessionStorage.setItem('currentContact', JSON.stringify(this.activity.contact));
+                sessionStorage.setItem('contactTimestamp', Date.now().toString());
+            } else {
+                sessionStorage.removeItem('currentContact');
+                sessionStorage.removeItem('contactTimestamp');
+            }
+            const params = new URLSearchParams();
+            if (contactGuid) params.set('contactGuid', contactGuid);
+            if (!contactGuid && identityValue) params.set('identityValue', identityValue);
+            window.location.href = `view/history/history.html?${params.toString()}`;
+            return;
+        }
+
         const identity = this.activity.contact?.identities.find(id =>
             id.type.toLowerCase() === action
         ) || { value: this.activity.identityValue };
@@ -139,9 +156,21 @@ class ActivityListItem {
         const template = document.getElementById('activity-list-item');
         this.element = template.content.cloneNode(true).firstElementChild;
 
-        // Set icon
+        // Left circle: show the contact's uploaded photo when available,
+        // else the channel-type icon (phone/message/whatsapp/...).
         const iconType = this.element.querySelector('.icon-type');
-        iconType.className = this.getIconClass();
+        const iconWrap = this.element.querySelector('.list-item-icon');
+        const photoData = this.activity.contact?.photoData;
+        if (photoData) {
+            iconType.remove();
+            const img = document.createElement('img');
+            img.src = photoData;
+            img.alt = '';
+            img.className = 'list-item-photo';
+            iconWrap.appendChild(img);
+        } else {
+            iconType.className = this.getIconClass();
+        }
 
         // Set title (name or phone number)
         const title = this.element.querySelector('.list-item-title');
