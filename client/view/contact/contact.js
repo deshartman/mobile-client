@@ -266,7 +266,7 @@ async function handleSubmit() {
         sessionStorage.setItem('contacts', JSON.stringify(contacts));
 
         // Mark cache as stale so main page will refresh
-        sessionStorage.removeItem('activitiesCacheTimestamp');
+        sessionStorage.removeItem('mainListCacheTimestamp');
         
         console.log('[Contact] Contact saved successfully, cache invalidated');
         return true;

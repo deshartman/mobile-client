@@ -1,40 +1,30 @@
+// A list item represents a "person you can talk to" on the main screen:
+// either a known contact (row.kind === 'contact') or an unknown identity
+// (row.kind === 'unknown') — typically a phone number that has activities
+// but hasn't been promoted to a contact yet.
 class ActivityListItem {
-    constructor(activity) {
-        this.activity = activity;
+    constructor(row) {
+        this.row = row;
         this.element = null;
     }
 
-    getIconClass() {
-        switch (this.activity.type) {
-            case 'Phone':
-                return 'fas fa-phone';
-            case 'Message':
-                return 'fas fa-comment';
-            case 'WhatsApp':
-                return 'fab fa-whatsapp';
-            case 'SIP':
-                return 'fas fa-phone-alt';
-            case 'Client':
-                return 'fas fa-desktop';
-            case 'Contact':
-                return 'fas fa-user';
-            default:
-                return 'fas fa-question';
-        }
-    }
-
     getDisplayName() {
-        if (this.activity.contact) {
-            return `${this.activity.contact.firstName} ${this.activity.contact.lastName}`.trim();
+        if (this.row.kind === 'contact') {
+            return `${this.row.firstName || ''} ${this.row.lastName || ''}`.trim();
         }
-        return `<span class="phone-number">${this.activity.identityValue}</span>`;
+        return `<span class="phone-number">${this.row.identityValue}</span>`;
     }
 
     getCompanyName() {
-        return this.activity.contact?.company || '';
+        return this.row.company || '';
+    }
+
+    getFallbackIconClass() {
+        return this.row.kind === 'unknown' ? 'fas fa-phone' : 'fas fa-user';
     }
 
     formatDateTime(datetime) {
+        if (!datetime) return '';
         const date = new Date(datetime);
         return date.toLocaleString('en-US', {
             hour: 'numeric',
@@ -45,35 +35,39 @@ class ActivityListItem {
         });
     }
 
-    formatDuration(minutes) {
-        if (minutes < 60) {
-            return `${minutes} mins`;
-        }
-        const hours = Math.floor(minutes / 60);
-        const remainingMinutes = minutes % 60;
-        if (remainingMinutes === 0) {
-            return `${hours} hour${hours > 1 ? 's' : ''}`;
-        }
-        return `${hours} hour${hours > 1 ? 's' : ''} ${remainingMinutes} mins`;
-    }
-
     handleInfoClick(event) {
         event.stopPropagation();
-        if (this.activity.contact) {
-            const params = new URLSearchParams();
-            params.set('guid', this.activity.contact.guid);
-            params.set('firstName', this.activity.contact.firstName);
-            params.set('lastName', this.activity.contact.lastName);
-            params.set('identities', JSON.stringify(this.activity.contact.identities));
-            window.location.href = `view/contact/contact.html?${params.toString()}`;
+        const params = new URLSearchParams();
+        if (this.row.kind === 'contact') {
+            params.set('guid', this.row.guid);
+            params.set('firstName', this.row.firstName || '');
+            params.set('lastName', this.row.lastName || '');
+            params.set('identities', JSON.stringify(this.row.identities || []));
         } else {
-            const params = new URLSearchParams();
             params.set('firstName', '');
             params.set('lastName', '');
             params.set('identities', JSON.stringify([
-                { type: this.activity.type, value: this.activity.identityValue }
+                { type: 'Phone', value: this.row.identityValue }
             ]));
-            window.location.href = `view/contact/contact.html?${params.toString()}`;
+        }
+        window.location.href = `view/contact/contact.html?${params.toString()}`;
+    }
+
+    _storeContactForNavigation() {
+        if (this.row.kind === 'contact') {
+            const contact = {
+                guid: this.row.guid,
+                firstName: this.row.firstName,
+                lastName: this.row.lastName,
+                company: this.row.company,
+                photoData: this.row.photoData,
+                identities: this.row.identities || []
+            };
+            sessionStorage.setItem('currentContact', JSON.stringify(contact));
+            sessionStorage.setItem('contactTimestamp', Date.now().toString());
+        } else {
+            sessionStorage.removeItem('currentContact');
+            sessionStorage.removeItem('contactTimestamp');
         }
     }
 
@@ -86,45 +80,37 @@ class ActivityListItem {
         }
 
         if (action === 'history') {
-            const contactGuid = this.activity.contact?.guid || '';
-            const identityValue = this.activity.identityValue || '';
-            if (this.activity.contact) {
-                sessionStorage.setItem('currentContact', JSON.stringify(this.activity.contact));
-                sessionStorage.setItem('contactTimestamp', Date.now().toString());
-            } else {
-                sessionStorage.removeItem('currentContact');
-                sessionStorage.removeItem('contactTimestamp');
-            }
+            this._storeContactForNavigation();
             const params = new URLSearchParams();
-            if (contactGuid) params.set('contactGuid', contactGuid);
-            if (!contactGuid && identityValue) params.set('identityValue', identityValue);
+            if (this.row.kind === 'contact') {
+                params.set('contactGuid', this.row.guid);
+            } else if (this.row.identityValue) {
+                params.set('identityValue', this.row.identityValue);
+            }
             window.location.href = `view/history/history.html?${params.toString()}`;
             return;
         }
 
-        const identity = this.activity.contact?.identities.find(id =>
-            id.type.toLowerCase() === action
-        ) || { value: this.activity.identityValue };
-
-        // Store contact data in sessionStorage if available
-        if (this.activity.contact) {
-            sessionStorage.setItem('currentContact', JSON.stringify(this.activity.contact));
-            sessionStorage.setItem('contactTimestamp', Date.now().toString());
+        // Resolve the identity value for call / message / whatsapp.
+        let identityValue;
+        if (this.row.kind === 'contact') {
+            const match = (this.row.identities || []).find(id => id.type.toLowerCase() === action);
+            identityValue = match ? match.value : (this.row.identities?.[0]?.value || '');
         } else {
-            // Clear any previous contact data
-            sessionStorage.removeItem('currentContact');
-            sessionStorage.removeItem('contactTimestamp');
+            identityValue = this.row.identityValue;
         }
+
+        this._storeContactForNavigation();
 
         switch (action) {
             case 'call':
-                window.location.href = `view/calling/calling.html?number=${identity.value}`;
+                window.location.href = `view/calling/calling.html?number=${identityValue}`;
                 break;
             case 'message':
-                window.location.href = `view/message/message.html?number=${identity.value}`;
+                window.location.href = `view/message/message.html?number=${identityValue}`;
                 break;
             case 'whatsapp':
-                window.location.href = `view/whatsapp/whatsapp.html?number=${identity.value}`;
+                window.location.href = `view/whatsapp/whatsapp.html?number=${identityValue}`;
                 break;
         }
     }
@@ -139,11 +125,9 @@ class ActivityListItem {
     }
 
     attachEventListeners() {
-        // Row click toggles the drawer
         const row = this.element.querySelector('.list-item');
         row.addEventListener('click', this.handleItemClick.bind(this));
 
-        // Action button clicks
         const actionButtons = this.element.querySelectorAll('.action-button');
         actionButtons.forEach(button => {
             button.addEventListener('click', (e) =>
@@ -156,11 +140,10 @@ class ActivityListItem {
         const template = document.getElementById('activity-list-item');
         this.element = template.content.cloneNode(true).firstElementChild;
 
-        // Left circle: show the contact's uploaded photo when available,
-        // else the channel-type icon (phone/message/whatsapp/...).
+        // Left circle: photo if available, else kind-appropriate fallback icon.
         const iconType = this.element.querySelector('.icon-type');
         const iconWrap = this.element.querySelector('.list-item-icon');
-        const photoData = this.activity.contact?.photoData;
+        const photoData = this.row.photoData;
         if (photoData) {
             iconType.remove();
             const img = document.createElement('img');
@@ -169,28 +152,21 @@ class ActivityListItem {
             img.className = 'list-item-photo';
             iconWrap.appendChild(img);
         } else {
-            iconType.className = this.getIconClass();
+            iconType.className = this.getFallbackIconClass();
         }
 
-        // Set title (name or phone number)
         const title = this.element.querySelector('.list-item-title');
         title.innerHTML = this.getDisplayName();
 
-        // Set subtitle (company)
         const subtitle = this.element.querySelector('.list-item-subtitle');
-        subtitle.textContent = this.getCompanyName() || '\u00A0'; // Use non-breaking space if empty
+        subtitle.textContent = this.getCompanyName() || ' ';
 
-        // Set time and duration
         const time = this.element.querySelector('.list-item-time');
-        time.textContent = this.formatDateTime(this.activity.datetime);
+        time.textContent = this.formatDateTime(this.row.lastInteractedAt);
 
+        // No per-activity duration in the main-list view.
         const duration = this.element.querySelector('.list-item-duration');
-        // Only show duration for Phone, SIP, and Client type activities
-        if (this.activity.type === 'Phone' || this.activity.type === 'SIP' || this.activity.type === 'Client') {
-            duration.textContent = this.formatDuration(this.activity.duration);
-        } else {
-            duration.style.display = 'none';
-        }
+        if (duration) duration.style.display = 'none';
 
         this.attachEventListeners();
 
@@ -198,5 +174,4 @@ class ActivityListItem {
     }
 }
 
-// Export the component
 export default ActivityListItem;

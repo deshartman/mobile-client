@@ -81,6 +81,23 @@ app.get('/contacts/:userGuid', (req, res) => {
     }
 });
 
+// Main-list endpoint: rolled-up per-person rows for the home screen.
+// Each row is either a known contact (kind: 'contact') or an unknown identity
+// that has activities (kind: 'unknown'), ordered by last interaction.
+app.get('/main-list/:userGuid', (req, res) => {
+    const userGuid = req.params.userGuid;
+    logOut('API', `GET /main-list/${userGuid} - Request received`);
+
+    try {
+        const rows = contactService.getMainListRows(userGuid);
+        logOut('API', `GET /main-list/${userGuid} - Returning ${rows.length} rows`);
+        res.json(rows);
+    } catch (error) {
+        logError('API', `GET /main-list/${userGuid} - Error: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Activities Endpoints
 app.get('/activities/:userGuid', (req, res) => {
     const userGuid = req.params.userGuid;
