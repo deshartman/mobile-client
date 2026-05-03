@@ -9,8 +9,9 @@ const USER_GUID_KEY = 'userGUID';
 class ActivityList {
     constructor(containerElement) {
         this.containerElement = containerElement;
-        this.activities = [];
-        this.contacts = [];
+        // Mixed roster rows: kind='contact' (known) or kind='unknown' (identity-only).
+        // Server returns them pre-sorted (last-interacted DESC, then alphabetical).
+        this.rows = [];
         this.isLoading = false;
         this.hasError = false;
         this.errorMessage = '';
@@ -49,10 +50,10 @@ class ActivityList {
             this.containerElement.appendChild(this.emptyElement);
         }
 
-        // Create activities container for dynamic content
-        this.activitiesContainer = document.createElement('div');
-        this.activitiesContainer.className = 'activities-container';
-        this.containerElement.appendChild(this.activitiesContainer);
+        // Create list container for dynamic content
+        this.rowsContainer = document.createElement('div');
+        this.rowsContainer.className = 'activities-container';
+        this.containerElement.appendChild(this.rowsContainer);
     }
 
     // Show loading state
@@ -96,7 +97,7 @@ class ActivityList {
         if (this.loadingElement) this.loadingElement.style.display = 'none';
         if (this.errorElement) this.errorElement.style.display = 'none';
         if (this.emptyElement) this.emptyElement.style.display = 'none';
-        if (this.activitiesContainer) this.activitiesContainer.innerHTML = '';
+        if (this.rowsContainer) this.rowsContainer.innerHTML = '';
     }
 
     // Fetch data from server
@@ -104,103 +105,81 @@ class ActivityList {
         this.showLoading();
 
         try {
-            // Check if we should use cached data
-            const cachedData = sessionStorage.getItem('activitiesCache');
-            const cachedTimestamp = sessionStorage.getItem('activitiesCacheTimestamp');
+            const cachedData = sessionStorage.getItem('mainListCache');
+            const cachedTimestamp = sessionStorage.getItem('mainListCacheTimestamp');
             const now = Date.now();
-            const dataAge = cachedTimestamp ? now - parseInt(cachedTimestamp) : Infinity;
-            const maxAge = 5 * 60 * 1000; // 5 minutes in milliseconds
+            const dataAge = cachedTimestamp ? now - Number.parseInt(cachedTimestamp) : Infinity;
+            const maxAge = 5 * 60 * 1000;
 
-            // Use cached data if it's fresh enough and not forcing refresh
             if (!forceRefresh && cachedData && dataAge < maxAge) {
-                console.log(`Using cached activities data from localStorage: ${cachedData}`);
-                this.activities = JSON.parse(cachedData);
+                console.log('Using cached main-list data');
+                this.rows = JSON.parse(cachedData);
             } else {
-                console.log('Fetching fresh activities data');
-                // Fetch activities from server as they already include contact information
-                const activities = await ApiService.fetchActivities(this.userId);
-                console.log('Fetched activities:', activities);
-
-                // Store activities
-                this.activities = activities;
-
-                // Cache the fresh data
-                sessionStorage.setItem('activitiesCache', JSON.stringify(activities));
-                sessionStorage.setItem('activitiesCacheTimestamp', now.toString());
+                console.log('Fetching fresh main-list data');
+                const rows = await ApiService.fetchMainList(this.userId);
+                console.log('Fetched main-list rows:', rows);
+                this.rows = rows;
+                sessionStorage.setItem('mainListCache', JSON.stringify(rows));
+                sessionStorage.setItem('mainListCacheTimestamp', now.toString());
             }
 
-            // Sort activities by datetime
-            this.activities.sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
-
-            // Reset error state
             this.hasError = false;
             this.errorMessage = '';
 
-            // Render the list
             this.render();
         } catch (error) {
             console.error('Error fetching data:', error);
-            this.showError('Failed to load activities. Please try again.');
+            this.showError('Failed to load contacts. Please try again.');
         } finally {
             this.isLoading = false;
         }
     }
 
-    // Add new activity for a contact - now using the API
-    async addActivity(contact) {
-        const phoneNumber = contact.identities.find(id => id.type === 'Phone')?.value;
-        if (!phoneNumber) return;
-
-        try {
-            // Create new activity
-            const newActivity = {
-                type: 'Contact',
-                datetime: new Date().toISOString(),
-                duration: 0,
-                identityValue: phoneNumber,
-                contactGuid: contact.guid
-            };
-
-            // Send to server
-            await ApiService.addActivity(this.userId, newActivity);
-
-            // Refresh data from server
-            await this.fetchData();
-        } catch (error) {
-            console.error('Error adding activity:', error);
-            // Show error toast using template
-            this.showErrorToast('Failed to add activity');
-        }
-    }
-
-    // Filter activities based on search term
-    filterActivities(searchTerm) {
+    // Filter rows based on search term
+    filterRows(searchTerm) {
         if (!searchTerm) {
-            return this.activities;
+            return this.rows;
         }
 
-        const searchString = searchTerm.toLowerCase();
-        return this.activities.filter(activity => {
-            if (activity.contact) {
-                const fullName = `${activity.contact.firstName} ${activity.contact.lastName}`.toLowerCase();
-                const company = activity.contact.company?.toLowerCase() || '';
-                return fullName.includes(searchString) ||
-                    company.includes(searchString) ||
-                    activity.contact.identities.some(id => id.value.includes(searchString));
+        const q = searchTerm.toLowerCase();
+        return this.rows.filter(row => {
+            if (row.kind === 'contact') {
+                const fullName = `${row.firstName || ''} ${row.lastName || ''}`.toLowerCase();
+                const company = row.company?.toLowerCase() || '';
+                return fullName.includes(q) ||
+                    company.includes(q) ||
+                    (row.identities || []).some(id => id.value.toLowerCase().includes(q));
             }
-            return activity.identityValue.includes(searchString);
+            return (row.identityValue || '').toLowerCase().includes(q);
         });
     }
 
-    // Handle contact updates
-    async handleContactUpdate(event) {
-        const { contact } = event.detail;
+    // Re-sort rows in place using the same order the server applies:
+    // last-interacted DESC (null last), then first_name/last_name alphabetical.
+    sortRows() {
+        this.rows.sort((a, b) => {
+            const at = a.lastInteractedAt;
+            const bt = b.lastInteractedAt;
+            if (at && bt) {
+                const diff = new Date(bt) - new Date(at);
+                if (diff !== 0) return diff;
+            } else if (at && !bt) {
+                return -1;
+            } else if (!at && bt) {
+                return 1;
+            }
+            const af = (a.firstName || '').toLowerCase();
+            const bf = (b.firstName || '').toLowerCase();
+            if (af !== bf) return af.localeCompare(bf);
+            const al = (a.lastName || '').toLowerCase();
+            const bl = (b.lastName || '').toLowerCase();
+            return al.localeCompare(bl);
+        });
+    }
 
-        // Add new activity for this contact
-        await this.addActivity(contact);
-
-        // Refresh data from server
-        await this.fetchData();
+    // Handle contact updates — just refetch; the server already seeded/updated the row.
+    async handleContactUpdate() {
+        await this.fetchData(true);
     }
 
     // Show error toast using template
@@ -222,23 +201,21 @@ class ActivityList {
         }
     }
 
-    // Render the list with filtered activities
+    // Render the list with filtered rows
     render(searchTerm = '') {
         this.hideAllStates();
-        const filteredActivities = this.filterActivities(searchTerm);
+        const filtered = this.filterRows(searchTerm);
 
-        if (filteredActivities.length === 0) {
-            // Show empty state
+        if (filtered.length === 0) {
             if (this.emptyElement) {
                 this.emptyElement.style.display = 'block';
             }
         } else {
-            // Render activities in the activities container
-            if (this.activitiesContainer) {
-                this.activitiesContainer.innerHTML = '';
-                filteredActivities.forEach(activity => {
-                    const listItem = new ActivityListItem(activity);
-                    this.activitiesContainer.appendChild(listItem.render());
+            if (this.rowsContainer) {
+                this.rowsContainer.innerHTML = '';
+                filtered.forEach(row => {
+                    const listItem = new ActivityListItem(row);
+                    this.rowsContainer.appendChild(listItem.render());
                 });
             }
         }
@@ -252,9 +229,32 @@ class ActivityList {
             try {
                 const activity = JSON.parse(event.data);
                 console.log('[SSE] activity.added:', activity);
-                this.activities.unshift(activity);
-                sessionStorage.setItem('activitiesCache', JSON.stringify(this.activities));
-                sessionStorage.setItem('activitiesCacheTimestamp', Date.now().toString());
+
+                let matched = false;
+                if (activity.contactGuid) {
+                    const row = this.rows.find(r => r.kind === 'contact' && r.guid === activity.contactGuid);
+                    if (row) {
+                        row.lastInteractedAt = activity.datetime;
+                        matched = true;
+                    }
+                } else if (activity.identityValue) {
+                    const row = this.rows.find(r => r.kind === 'unknown' && r.identityValue === activity.identityValue);
+                    if (row) {
+                        row.lastInteractedAt = activity.datetime;
+                        matched = true;
+                    }
+                }
+
+                if (!matched) {
+                    // New contact linked server-side or first-ever activity from a new
+                    // unknown number — refetch to pick up the new row.
+                    this.fetchData(true);
+                    return;
+                }
+
+                this.sortRows();
+                sessionStorage.setItem('mainListCache', JSON.stringify(this.rows));
+                sessionStorage.setItem('mainListCacheTimestamp', Date.now().toString());
                 this.render();
             } catch (err) {
                 console.error('[SSE] Failed to handle activity.added:', err);
@@ -303,11 +303,10 @@ class ActivityList {
         // Set up visibility change listener to refresh data when app comes to foreground
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                // Check if data is stale and refresh if needed
-                const cachedTimestamp = sessionStorage.getItem('activitiesCacheTimestamp');
+                const cachedTimestamp = sessionStorage.getItem('mainListCacheTimestamp');
                 const now = Date.now();
-                const dataAge = cachedTimestamp ? now - parseInt(cachedTimestamp) : Infinity;
-                const maxAge = 5 * 60 * 1000; // 5 minutes in milliseconds
+                const dataAge = cachedTimestamp ? now - Number.parseInt(cachedTimestamp) : Infinity;
+                const maxAge = 5 * 60 * 1000;
 
                 if (dataAge > maxAge) {
                     console.log('Data is stale, refreshing...');

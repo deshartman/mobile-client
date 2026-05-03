@@ -35,8 +35,35 @@ class ApiService {
     }
 
     /**
+     * Fetch rolled-up rows for the main screen (contacts + unknown identities,
+     * ordered by last interaction).
+     *
+     * @param {string} userId
+     * @returns {Promise<Array>}
+     */
+    async fetchMainList(userId) {
+        try {
+            console.log(`[ApiService] Making GET request to /main-list/${userId}`);
+            const response = await fetch(`${this.baseUrl}/main-list/${userId}`);
+
+            console.log(`[ApiService] GET /main-list/${userId} - Response status: ${response.status}`);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log(`[ApiService] GET /main-list/${userId} - Response data:`, data);
+            return data;
+        } catch (error) {
+            console.error(`[ApiService] Error fetching main-list for user ${userId}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Fetch all activities for a user
-     * 
+     *
      * @param {string} userId - The user ID to fetch activities for
      * @returns {Promise<Array>} - Promise resolving to an array of activities
      */

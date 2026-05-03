@@ -9,6 +9,9 @@
  * - deleteContact(userGUID, contactGUID) → boolean (emits 'contactDeleted')
  * - getActivities(userGUID) → enriched activity array (most recent first)
  * - addActivity(userGUID, activity) → activity (emits 'activityAdded' with enriched payload)
+ * - getMainListRows(userGUID) → rows for the main screen: contacts + unknown-identity
+ *   groups, ordered by last-interacted-at DESC then alphabetical for contacts with
+ *   no interactions.
  */
 const EventEmitter = require('events');
 const { v4: uuidv4 } = require('uuid');
@@ -58,6 +61,35 @@ class ContactService extends EventEmitter {
         this._selectActivitiesForUser = db.prepare(
             'SELECT * FROM activities WHERE user_guid = ? ORDER BY datetime DESC'
         );
+        this._selectMainListRows = db.prepare(`
+            SELECT 'contact' AS kind,
+                   c.contact_guid AS guid,
+                   c.first_name, c.last_name, c.company, c.photo_data,
+                   NULL AS identity_value,
+                   la.last_interacted_at
+            FROM contacts c
+            LEFT JOIN (
+                SELECT contact_guid, MAX(datetime) AS last_interacted_at
+                FROM activities
+                WHERE user_guid = ? AND contact_guid IS NOT NULL
+                GROUP BY contact_guid
+            ) la ON la.contact_guid = c.contact_guid
+            WHERE c.user_guid = ?
+
+            UNION ALL
+
+            SELECT 'unknown' AS kind,
+                   NULL, NULL, NULL, NULL, NULL,
+                   identity_value,
+                   MAX(datetime) AS last_interacted_at
+            FROM activities
+            WHERE user_guid = ? AND contact_guid IS NULL AND identity_value IS NOT NULL
+            GROUP BY identity_value
+
+            ORDER BY last_interacted_at DESC NULLS LAST,
+                     first_name COLLATE NOCASE,
+                     last_name COLLATE NOCASE
+        `);
         this._selectActivitiesForUserAndContact = db.prepare(
             'SELECT * FROM activities WHERE user_guid = ? AND contact_guid = ? ORDER BY datetime DESC'
         );
@@ -82,6 +114,36 @@ class ContactService extends EventEmitter {
     getContacts(userGUID) {
         const rows = this._selectContactsForUser.all(userGUID);
         return rows.map(r => rowToContact(r, this._identitiesFor(r.contact_guid)));
+    }
+
+    getMainListRows(userGUID) {
+        const rows = this._selectMainListRows.all(userGUID, userGUID, userGUID);
+        return rows.map(r => {
+            if (r.kind === 'contact') {
+                return {
+                    kind: 'contact',
+                    guid: r.guid,
+                    firstName: r.first_name,
+                    lastName: r.last_name,
+                    company: r.company,
+                    photoData: r.photo_data || null,
+                    identities: this._identitiesFor(r.guid),
+                    identityValue: null,
+                    lastInteractedAt: r.last_interacted_at || null
+                };
+            }
+            return {
+                kind: 'unknown',
+                guid: null,
+                firstName: null,
+                lastName: null,
+                company: null,
+                photoData: null,
+                identities: [],
+                identityValue: r.identity_value,
+                lastInteractedAt: r.last_interacted_at || null
+            };
+        });
     }
 
     getContact(userGUID, contactGUID) {
