@@ -33,7 +33,7 @@ const { VoiceServices } = require('./services/VoiceServices');
 const { WebhookService } = require('./services/WebhookService');
 const { SseService } = require('./services/SseService');
 const { MessagesRepository } = require('./services/MessagesRepository');
-const { ConversationsService } = require('./services/ConversationsService');
+const { MessagingService } = require('./services/MessagingService');
 const { AuthService } = require('./services/AuthService');
 const { TwilioNumberService } = require('./services/TwilioNumberService');
 
@@ -45,13 +45,13 @@ const authService = new AuthService({ userService, twilioNumberService });
 const voiceServices = new VoiceServices(userService);
 const sseService = new SseService(contactService);
 const messagesRepo = new MessagesRepository();
-const conversationsService = new ConversationsService({ contactService, userService, messagesRepo, sseService });
+const messagingService = new MessagingService({ contactService, userService, messagesRepo, sseService });
 const webhookService = new WebhookService({
     contactService,
     userService,
     sseService,
     messagesRepo,
-    conversationsService
+    messagingService
 });
 
 
@@ -366,9 +366,9 @@ app.get('/events/:userGuid', (req, res) => {
     });
 });
 
-// Send an outbound SMS via Twilio Conversations. The message is NOT inserted
-// into the local messages table here — the onMessageAdded webhook is the
-// canonical write path for both inbound and outbound messages.
+// Send an outbound SMS via the plain Twilio Messages API. The message is
+// inserted into the local messages table immediately on success — the local
+// DB is the source of truth.
 app.post('/messaging/send', async (req, res) => {
     const { userGuid, to, body, contactGuid } = req.body;
     logOut('API', `POST /messaging/send - userGuid: ${userGuid}, to: ${to}`);
@@ -378,8 +378,8 @@ app.post('/messaging/send', async (req, res) => {
     }
 
     try {
-        const result = await conversationsService.sendMessage({ userGuid, remoteAddress: to, body, contactGuid });
-        logOut('API', `POST /messaging/send - sent ${result.messageSid} on ${result.conversationSid}`);
+        const result = await messagingService.sendMessage({ userGuid, remoteAddress: to, body, contactGuid });
+        logOut('API', `POST /messaging/send - sent ${result.messageSid} on ${result.threadId}`);
         res.json(result);
     } catch (err) {
         logError('API', `POST /messaging/send - ${err.message}`);
@@ -387,12 +387,12 @@ app.post('/messaging/send', async (req, res) => {
     }
 });
 
-// Thread hydration — returns { conversationSid, messages } for the given pair.
+// Thread hydration — returns { threadId, messages } for the given pair.
 app.get('/messaging/thread/:userGuid', (req, res) => {
     const { userGuid } = req.params;
     const { to } = req.query;
     try {
-        const thread = conversationsService.getThread(userGuid, to);
+        const thread = messagingService.getThread(userGuid, to);
         res.json(thread);
     } catch (err) {
         logError('API', `GET /messaging/thread/${userGuid} - ${err.message}`);
@@ -424,34 +424,37 @@ app.post('/webhooks/voice/status', express.urlencoded({ extended: false }), vali
     res.type('text/xml').send('<Response/>');
 });
 
-// Twilio Conversations post-event webhook (default chat service).
-// Configured in Console → Conversations → Defaults → Post-event URL.
-app.post('/webhooks/conversations', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
-    logOut('API', `POST /webhooks/conversations - ${req.body.EventType} conv=${req.body.ConversationSid || ''} msg=${req.body.MessageSid || ''} author=${req.body.Author || ''}`);
-    webhookService.handleConversationsWebhook(req.body);
-    res.type('text/xml').send('<Response/>');
-});
-
-// Messaging Service "Send a webhook" bridge for inbound SMS.
-// Console → Messaging → Services → Integration → Incoming Messages: "Send a webhook",
-// URL = {SERVER_BASE_URL}/webhooks/messaging/inbound. We post the inbound into
-// the matching Conversation so onMessageAdded becomes the single source of truth.
+// Inbound SMS. Each user's Twilio number is provisioned with
+// smsUrl = {SERVER_BASE_URL}/webhooks/messaging/inbound at purchase time
+// (see TwilioNumberService). Numbers must NOT be attached to a Messaging
+// Service — that would route inbound through the MS webhook instead.
 // Respond with an empty <Response/> so Twilio doesn't send an auto-reply.
-app.post('/webhooks/messaging/inbound', express.urlencoded({ extended: false }), validateTwilioRequest, async (req, res) => {
-    const { From, To, Body, MessageSid } = req.body;
+app.post('/webhooks/messaging/inbound', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
+    const { From, To, MessageSid } = req.body;
     logOut('API', `POST /webhooks/messaging/inbound - ${MessageSid} ${From} → ${To}`);
 
     try {
-        await conversationsService.bridgeInboundSms({
-            from: From,
-            to: To,
-            body: Body,
-            smsMessageSid: MessageSid
-        });
+        webhookService.handleInboundSms(req.body);
     } catch (err) {
         logError('API', `POST /webhooks/messaging/inbound - ${err.message}`);
     }
     res.type('text/xml').send('<Response/>');
+});
+
+// Outbound SMS status callback. Configured per-message via `statusCallback`
+// on `messages.create`. Twilio POSTs here multiple times per message
+// (queued → sent → delivered|failed). Updates messages.status and broadcasts
+// SSE so the client can update the bubble indicator.
+app.post('/webhooks/messaging/status', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
+    const { MessageSid, MessageStatus } = req.body;
+    logOut('API', `POST /webhooks/messaging/status - ${MessageSid} → ${MessageStatus}`);
+
+    try {
+        webhookService.handleMessageStatus(req.body);
+    } catch (err) {
+        logError('API', `POST /webhooks/messaging/status - ${err.message}`);
+    }
+    res.status(204).send();
 });
 
 // Voice API Endpoints

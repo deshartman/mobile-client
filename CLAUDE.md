@@ -1,292 +1,197 @@
-# Mobile Client Data Architecture
+# MobileClient Architecture
 
-## Overview
-This mobile client application implements a **client-server architecture** with **user authentication** and a **cache-first strategy** for managing contacts and activities. The system provides secure user login, tracks communication activities with contacts, and maintains data isolation between users. The server serves as the authoritative data source with local caching for performance.
+A mobile-web client for per-user Twilio voice + SMS. Each authenticated user
+has their own Twilio phone number and communicates with contacts from it.
+The server is a single Node/Express process backed by SQLite; the client is
+static HTML/JS served from `client/`.
 
-## Data Architecture
+No front-end framework, no bundler — plain ES modules and `fetch` + SSE.
 
-### Core Entities
+## Core entities
 
-#### Users
-Users represent authenticated individuals with unique identifiers:
-```javascript
-{
-    userGUID: 'uuid-v4-string',        // Unique user identifier
-    name: 'string',                    // User's display name
-    email: 'user@example.com'          // Email address (unique)
-}
+All entities are scoped by `user_guid` (UUIDv4). FK cascade on user delete.
+
+- **User** — `user_guid`, `name`, `phone` (E.164, unique), `twilio_number`,
+  `twilio_number_sid`, `created`. See [database.js:25](server/db/database.js#L25).
+- **Contact** — `contact_guid`, `user_guid`, `first_name`, `last_name`,
+  `company`, `photo_data` (base64). Plus `contact_identities` rows
+  (`type ∈ {Phone, Message, WhatsApp, SIP, Client}`, `value`).
+- **Activity** — one row per interaction. `type ∈ {Phone, Message, WhatsApp,
+  Contact}`, `datetime`, `duration` (minutes; 0 = audit marker), `identity_value`,
+  `contact_guid` (nullable — inbound from unknown numbers is common).
+- **Thread** — `thread_id` (local `thr_<uuid>`), `user_guid`, `contact_guid`,
+  `remote_address`, `proxy_address` (user's Twilio number), `activity_id`.
+- **Message** — `message_sid` (Twilio SMxxx), `thread_id`, `direction`, `author`,
+  `body`, `datetime`.
+
+## Auth
+
+Phone-OTP only. No passwords, no email/password.
+
+1. `POST /auth/send-otp` → `AuthService.requestOtp` generates a 6-digit code,
+   stores sha256 hash in `otp_verifications`, sends SMS via
+   `client.messages.create({ to, from: OTP_FROM_NUMBER })`.
+2. `POST /auth/verify-otp` — constant-time check with 5-attempt lockout.
+3. `POST /auth/complete` — existing phone → signin (return `userGUID`);
+   new phone → create user + provision a Twilio number via
+   `TwilioNumberService.provisionForUser` (country picked from E.164 prefix).
+
+The client stores `userGUID`, `userPhone`, `userName` in `sessionStorage`
+after signin. Every API call URL-encodes the `userGUID` in the path. There
+is no bearer token; the server trusts the path param and scopes all queries
+by it. See [phone-otp-signup.md](.claude/plans/phone-otp-signup.md) for the
+design context.
+
+`OTP_FROM_NUMBER` is a single dedicated sender — per-user numbers can't send
+the OTP because they don't exist until *after* verification.
+
+## Voice (Twilio Voice SDK)
+
+- Outbound: browser gets an AccessToken from `POST /voice/token`, calls
+  `Device.connect({ params: { userGuid, To, destinationType, ... } })`. Twilio
+  hits `POST /voice/outgoing` (the TwiML App Voice URL) which returns TwiML
+  that dials the right destination. `destinationType` switches between
+  `phone` (PSTN), `assistant` (AI `<Connect><Assistant>`), `flex` (TaskRouter
+  `<Enqueue>`), or `custom` (arbitrary SIP URI).
+- Inbound (PSTN → browser): when someone calls the user's provisioned number,
+  Twilio hits `POST /voice/incoming`, we look up the owner by `To`, return
+  TwiML that dials `<Client>{userGuid}</Client>`. The browser's Device fires
+  an incoming-call event; the UI shows it.
+- Activity logging: `/voice/outgoing` registers the outbound CallSid with
+  `WebhookService.registerCallBySid` and `/voice/incoming` registers via
+  `registerIncomingCall`. Twilio's `POST /webhooks/voice/status` is the
+  authoritative "call ended" signal — `handleVoiceStatus` inserts the Phone
+  activity on `CallStatus=completed` (or `DialCallStatus=completed` for the
+  child leg).
+
+See [CLAUDE-VoiceSDK.md](.claude/plans/CLAUDE-VoiceSDK.md).
+
+## Messaging (SMS)
+
+Plain Twilio Programmable Messaging — no Messaging Service, no Conversations
+API. Each user's provisioned number has its `smsUrl` set directly at purchase
+time.
+
+- Outbound: `POST /messaging/send` → `MessagingService.sendMessage` →
+  `client.messages.create({ to, from: user.twilioNumber, body })`. Result
+  persisted to `messages` immediately with the returned SMxxx as PK.
+- Inbound: Twilio hits `POST /webhooks/messaging/inbound` on the per-number
+  `smsUrl`; `WebhookService.handleInboundSms` finds the owning user by `To`,
+  `ensureThread`s, inserts the message (idempotent on SMxxx PK).
+- Thread model: keyed locally by `(user_guid, proxy_address, remote_address)`
+  with a unique index ([database.js:83](server/db/database.js#L83)).
+- First message in a thread auto-creates a `Message` activity linked via
+  `threads.activity_id` — subsequent messages don't duplicate the activity.
+
+See [CLAUDE-MessagingSDK.md](.claude/plans/CLAUDE-MessagingSDK.md).
+
+## Real-time updates (SSE)
+
+Per-user server-push via `GET /events/:userGuid`. [SseService](server/services/SseService.js)
+holds `Map<userGuid, Set<res>>` and broadcasts scoped to one user:
+
+- `activity.added` — fired via `ContactService.emit('activityAdded', ...)`
+  whenever any activity is inserted (phone call, message, contact add).
+- `message.added` — fired by `MessagingService.sendMessage` (outbound) and
+  `WebhookService.handleInboundSms` (inbound).
+- `incoming-call` — fired by `WebhookService.registerIncomingCall`.
+
+SSE is best-effort. Mobile browsers (iOS Safari in particular) suspend
+long-lived connections when the tab backgrounds; events delivered during the
+suspension are lost. The message view handles this by re-hydrating the
+thread on `visibilitychange` → `visible` — `appendMessage` dedups on
+`messageSid` so replay is idempotent. See [message.js:232-238](client/view/message/message.js#L232-L238).
+
+## Client caching
+
+`sessionStorage` is the only client cache. Relevant keys:
+
+- `userGUID`, `userPhone`, `userName` — session identity, set on signin
+- `currentContact` / `contactTimestamp` — passed between views when navigating
+  into a contact-scoped action (call, message, WhatsApp)
+- `mainListCache` + `mainListCacheTimestamp` — 5-min TTL cache for the home
+  screen list. Invalidated on contact create and on the main view's
+  `activity.added` SSE handler (which does an in-place merge).
+- `contacts` — legacy per-phone dictionary written by the contact form.
+
+There is **no client-side auth token cache**. The `userGUID` in sessionStorage
+is the identity; it's pushed into request paths, not headers.
+
+## Server layout
+
+```
+server/
+├── server.js                          # Express app, all routes
+├── db/
+│   ├── database.js                    # SQLite schema + migrations
+│   └── seed.js                        # Idempotent dev seed (skip if users > 0)
+├── services/
+│   ├── AuthService.js                 # Phone-OTP signup/signin
+│   ├── UserServices.js                # User CRUD
+│   ├── ContactServices.js             # Contacts + activities + EventEmitter
+│   ├── TwilioNumberService.js         # Per-user number provision/release
+│   ├── VoiceServices.js               # AccessToken + TwiML generation
+│   ├── MessagingService.js            # SMS send + thread ensure
+│   ├── MessagesRepository.js          # threads + messages DAO
+│   ├── WebhookService.js              # Voice status + inbound SMS handlers
+│   └── SseService.js                  # Per-user SSE fanout
+└── scripts/
+    └── migrate-detach-numbers.js      # One-shot: detach numbers from MS pool
 ```
 
-#### Activities
-Activities represent all interactions with contacts (calls, messages, contact additions, etc.):
-```javascript
-{
-    id: uuidv4(),                    // Unique identifier
-    type: 'Phone|Message|WhatsApp|SIP|Client',
-    datetime: '2025-02-23T01:15:00', // ISO timestamp
-    duration: 45,                    // Duration in minutes
-    identityValue: '+1 (555) 444-3333', // Phone/contact method
-    contactGuid: 'contact-1'         // Links to contact
-}
+## Key routes
+
+| Route                                 | Purpose |
+|---------------------------------------|---------|
+| `POST /auth/send-otp`                 | Send OTP to `{phone}` |
+| `POST /auth/verify-otp`               | Check OTP, return `{ verified, isExistingUser }` |
+| `POST /auth/complete`                 | Sign-in or create user + provision number |
+| `GET  /users/:userGuid`               | Session validation |
+| `GET  /main-list/:userGuid`           | Home-screen roster (contacts + unknown identities, ranked by last interaction) |
+| `GET  /activities/:userGuid[/by-contact/:cg\|/by-identity/:iv]` | Activity feed variants |
+| `POST /contacts/:userGuid`            | Create contact (fires Contact activity) |
+| `POST /messaging/send`                | Outbound SMS |
+| `GET  /messaging/thread/:userGuid?to=`| Thread hydration |
+| `POST /webhooks/messaging/inbound`    | Per-number inbound SMS from Twilio |
+| `POST /voice/token`                   | AccessToken for Voice SDK |
+| `POST /voice/outgoing`                | TwiML for outbound browser calls |
+| `POST /voice/incoming`                | TwiML for inbound PSTN → `<Client>` |
+| `POST /webhooks/voice/status`         | Twilio voice status callback |
+| `GET  /events/:userGuid`              | SSE server-push |
+
+All webhook routes are gated by `validateTwilioRequest` — HMAC-signed via
+`TWILIO_AUTH_TOKEN`. The middleware is a no-op when the token is unset (dev
+without ngrok stability).
+
+## Environment
+
+See [.env.example](server/.env.example). Required:
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_API_KEY`, `TWILIO_API_SECRET`
+- `SERVER_BASE_URL` (public URL; must be `https://…` for webhook signature validation)
+- `TWIML_APP_SID`, `OTP_FROM_NUMBER`
+- `TWILIO_COUNTRY_CONFIG_<ISO>_TYPE` + bundle/address pair per supported country
+
+## Dev workflow
+
+```
+cd server && pnpm install
+cp .env.example .env              # fill values
+ngrok http --url=<your-domain> 3001
+node server.js                    # first boot runs DB migrations + seed
 ```
 
-#### Contacts
-Contacts store person/business information:
-```javascript
-{
-    guid: 'contact-timestamp',
-    firstName: 'string',
-    lastName: 'string',
-    company: 'string',
-    identities: [
-        { type: 'Phone|Message|WhatsApp|SIP|Client', value: 'contact_value' }
-    ]
-}
-```
+Open `https://<ngrok>/signup` → OTP signup → app loads at `/`.
 
-## Data Flow Architecture
+## Known limitations
 
-### Client-Server Relationship
-```
-┌─────────────────┐    HTTP API    ┌──────────────────┐
-│     Client      │ ←──────────────→ │      Server      │
-│                 │                 │                  │
-│ sessionStorage  │     Cache       │ ContactService   │
-│ (5min cache)    │                 │ (Memory Maps)    │
-│                 │                 │                  │
-│ localStorage    │   Persistent    │ UserService      │
-│ (auth data)     │                 │ (User Data)      │
-└─────────────────┘                 └──────────────────┘
-```
-
-### Storage Strategy
-
-#### Server-Side (Source of Truth)
-- **UserService**: Manages user accounts and authentication with UUID-based identification
-- **ContactService**: Manages contacts and activities in memory Maps per user
-- **Data Structure**: `userGUID → contacts/activities → data` (complete user isolation)
-- **API Endpoints**: RESTful endpoints for CRUD operations with user authentication
-
-#### Client-Side Caching
-- **sessionStorage**: User authentication data and activity cache (session-based)
-- **Cache Keys**:
-  - User session: `userGUID` + `userEmail` + `userName`
-  - Activity cache: `activitiesCache` + `activitiesCacheTimestamp` (5-minute expiration)
-- **Session Management**: Automatic validation and cleanup on authentication failures
-
-## Key Workflows
-
-### 1. User Authentication Flow
-```
-1. App startup → Check sessionStorage for userGUID
-2. If userGUID exists → Validate with GET /users/{userGUID}
-3. If valid → Load main view | If invalid → Clear session, show login
-4. Login screen → User enters name and email
-5. User registration → POST /users (creates new or returns existing userGUID)
-6. Client stores → sessionStorage: userGUID, userEmail, userName
-7. Navigation → Redirect to main view with authenticated session
-```
-
-### 2. Contact Addition Flow
-```
-1. Authenticated user → Access contact form from main view
-2. User adds contact → Contact form submission with userGUID from session
-3. Contact saved → POST /contacts/{userGUID} to server with user validation
-4. Activity created → POST /activities/{userGUID} with duration: 0 (audit trail)
-5. Cache invalidated → Remove activitiesCacheTimestamp from sessionStorage
-6. Navigation → Return to main view with user session intact
-7. UI refresh → Visibility change triggers fresh user-specific data fetch
-8. Activities displayed → New contact appears in user's activity list
-```
-
-### 3. Activity Loading Flow
-```
-1. User authentication → Validate userGUID from sessionStorage
-2. Check cache → User-specific activitiesCache age validation (5 minutes)
-3. If fresh → Use cached user activities
-4. If stale/missing → Fetch from GET /activities/{userGUID}
-5. Server validation → Verify userGUID exists, return user-specific activities
-6. Enrich data → Server adds contact info to user's activities
-7. Cache update → Store fresh user data with timestamp
-8. Render UI → Display user's activities with contact details
-```
-
-## Caching Strategy
-
-### Cache Levels
-1. **Session Authentication**: User credentials in sessionStorage (browser session)
-2. **Activity Cache**: User-specific activity data (5-minute TTL)
-3. **Form Data**: Temporary contact form data (cleared on submission)
-
-### Cache Invalidation
-- **Time-based**: Automatic after 5 minutes for activity cache
-- **Action-based**: After contact/activity creation invalidates user's cache
-- **Session-based**: Authentication failures clear all session data
-- **Visibility-based**: When app regains focus triggers user data refresh
-- **Manual**: User-triggered refresh validates session and updates cache
-
-### Cache Management Code Locations
-- **index.js** - Application bootstrap and session validation
-- **login.js** - User authentication and session management
-- **ActivityList.js:61-83** - User-specific cache validation and refresh logic
-- **ActivityList.js:219-232** - Visibility change handler for authenticated users
-
-## Activity-Contact Relationship
-
-### Automatic Activity Creation
-When an authenticated user adds a contact, the system automatically creates a user-specific activity:
-- **Type**: "Phone"
-- **Duration**: 0 (indicates contact addition, not an actual call)
-- **Purpose**: Provides audit trail of when contacts were added per user
-- **User Isolation**: Activity is tied to userGUID ensuring data privacy
-- **Location**: `contact.js:133-158` (contact form creates activity via user-authenticated API)
-- **Server handling**: `ContactService.addActivity()` stores activity with userGUID validation
-
-### Data Enrichment
-User-specific activities are enriched with contact information on server response:
-```javascript
-// Server enriches user's activities with their contact data
-return activities.map(activity => {
-    const contact = userContacts?.get(activity.contactGuid);
-    return { ...activity, contact: contact || null };
-});
-```
-**User Isolation**: Only contacts belonging to the authenticated user are used for enrichment.
-
-## Troubleshooting Common Issues
-
-### Authentication Issues
-**Symptoms**: Login screen appears unexpectedly or session validation fails
-
-**Possible Causes**:
-1. **Invalid userGUID** - User session contains non-existent userGUID
-2. **Server restart** - UserService lost in-memory user data
-3. **Browser storage corruption** - sessionStorage contains invalid data
-4. **API communication failure** - Network issues preventing user validation
-
-**Debugging Steps**:
-1. Check browser DevTools → Application → Session Storage for userGUID validity
-2. Verify GET /users/{userGUID} returns 200 status in Network tab
-3. Check server logs for user validation requests and UserService state
-4. Clear sessionStorage and re-authenticate if corruption suspected
-
-### Empty Activities List
-**Symptoms**: Console shows "Fetched activities: []"
-
-**Possible Causes**:
-1. **Server not running** - API endpoints returning 404/500 errors
-2. **No activities in server data** - Authenticated user has no activities yet
-3. **Authentication failure** - User not properly authenticated before activity fetch
-4. **User isolation** - Activities stored under different userGUID than current session
-5. **Cache corruption** - Invalid activity cache preventing fresh data fetch
-
-**Debugging Steps**:
-1. Verify user authentication status in sessionStorage (userGUID, userEmail, userName)
-2. Check network tab for GET /activities/{userGUID} API call success/failure
-3. Verify server ContactService has data for current authenticated userGUID
-4. Clear activity cache (activitiesCacheTimestamp) to force fresh data fetch
-5. Check server logs for user-specific activity retrieval
-
-### Data Sync Issues
-**Symptoms**: Changes not persisting or appearing inconsistently
-
-**Common Causes**:
-1. **Cache timing** - 5-minute cache delay masking user-specific updates
-2. **Authentication issues** - User session invalid during data operations
-3. **Navigation timing** - Contact events fired after page navigation
-4. **API failures** - Server errors during user-authenticated contact/activity creation
-5. **User isolation errors** - Operations attempted without proper userGUID validation
-
-## Performance Considerations
-
-### Optimization Features
-- **User-specific caching** reduces server requests while maintaining data isolation
-- **Session-based authentication** eliminates server-side session storage overhead
-- **Background refresh** on app focus maintains user data freshness
-- **Event-driven updates** provide real-time feel with user context
-- **Modular API service** enables easy endpoint changes with authentication
-
-### Limitations
-- **Memory-only server storage** - User data and sessions lost on server restart
-- **Session-based authentication** - Users must re-authenticate after browser restart
-- **No offline queue** - Failed requests not retried, requires re-authentication
-- **No pagination** - All user activities loaded at once
-- **No persistent cache** - Activity cache cleared on session end
-
-## Development Notes
-
-### Key Files
-- **index.js** - Application bootstrap and session validation
-- **login.js** - User authentication flow and session management
-- **ApiService.js** - HTTP client with user authentication for server communication
-- **ActivityList.js** - Main component managing user-specific activity display and caching
-- **UserServices.js** - Server-side user account management and authentication
-- **ContactService.js** - Server-side business logic for user-isolated contacts/activities
-- **contact.js** - Contact form handling with user authentication
-
-### Testing the Architecture
-1. **Verify server running** - Check if user and contact API endpoints respond
-2. **Test user authentication** - Ensure login flow creates valid sessions
-3. **Test contact creation** - Ensure user contacts appear in user activities after navigation
-4. **Validate user isolation** - Verify users only see their own data
-5. **Validate caching** - Observe user-specific cache behavior with network throttling
-6. **Check session persistence** - Verify sessions survive app refreshes but not browser restarts
-7. **Monitor API calls** - Use browser DevTools and server logs to debug authenticated data flow
-
-## Debugging Tools
-
-### Server-Side Logging
-The server provides comprehensive logging for debugging user-authenticated operations:
-```bash
-# User authentication logging
-[UserService] getUserByEmail called for: user@example.com
-[UserService] User registration/lookup: userGUID created/found
-[API] GET /users/{userGUID} - User validation request
-[UserService] User validation for userGUID: {userGUID}
-
-# User-specific API request logging
-[REQUEST] GET /activities/{userGUID} - Headers: {...}
-[API] GET /activities/{userGUID} - Request received for authenticated user
-[ContactService] getActivities called for userGUID: {userGUID}
-[ContactService] Found X activities for user {userGUID}
-```
-
-### Client-Side Logging
-The client logs user authentication and API calls:
-```javascript
-[Login] User login attempt: name, email
-[Login] Authentication successful: userGUID received
-[ApiService] Making GET request to /activities/{userGUID} for authenticated user
-[ApiService] GET /activities/{userGUID} - Response status: 200
-[Contact] Saving contact to server for user: {userGUID}
-[Contact] Activity created for user: {userGUID}
-```
-
-### Common Debugging Scenarios
-
-**Authentication Failures**:
-1. Check sessionStorage for userGUID, userEmail, userName presence
-2. Verify GET /users/{userGUID} returns 200 status for session validation
-3. Monitor `[Login]` and `[UserService]` logs for authentication flow
-4. Clear sessionStorage if corruption suspected
-
-**Empty Activities List**:
-1. Verify user authentication status before activity fetch
-2. Check server logs for userGUID in ContactService dummy data
-3. Verify API calls reach server with correct authenticated userGUID
-4. Ensure server returns user-specific activities with contact enrichment
-
-**Contact Creation Issues**:
-1. Confirm user authentication before contact form access
-2. Monitor contact form submission with `[Contact]` logs including userGUID
-3. Verify both contact and activity API calls succeed with user context
-4. Check cache invalidation removes user's `activitiesCacheTimestamp`
-5. Confirm main page refreshes user-specific data on return
-
-**User Data Isolation Issues**:
-1. Verify different users see different data sets
-2. Check server ContactService user data isolation in dummy data
-3. Monitor API calls include correct userGUID for each operation
-4. Validate session userGUID matches server user validation
-
-This architecture provides a solid foundation for a secure, multi-user mobile contact/activity tracking application with user authentication, data isolation, comprehensive logging, and debugging capabilities for development and troubleshooting.
+- **SSE through mobile suspension** — live push is unreliable when tabs
+  background. Views that display real-time data should re-hydrate on
+  `visibilitychange` → `visible`. `message.js` does; `ActivityList.js` does
+  not yet (follow-up).
+- **No pagination** — main list, activity feed, and message thread all return
+  everything for the user. Fine at current scale; not for 10k+ messages.
+- **No refresh tokens** — `sessionStorage` session ends when the browser
+  closes; user re-runs OTP. Acceptable for a mobile-web demo.
+- **Seed data is dev-only** — `seed.js` inserts 2 dummy users the first time
+  the DB is empty. Real signups coexist with seed users; seed does not
+  re-run when real users exist.

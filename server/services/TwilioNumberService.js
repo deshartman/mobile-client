@@ -8,14 +8,14 @@
  *
  * - provisionForUser(userGuid, signupPhone) — searches the country's inventory
  *   for an SMS+Voice number, purchases it with bundle/address if configured,
- *   wires webhooks, attaches to Messaging Service, persists on the user.
- * - releaseForUser(userGuid) — detaches from Messaging Service and deletes.
+ *   wires per-number smsUrl/voiceUrl webhooks, persists on the user.
+ * - releaseForUser(userGuid) — deletes the IncomingPhoneNumber.
  *
  * Errors expose `.twilioCode` / `.twilioMessage` when the source was a Twilio
  * REST error, so the signup endpoint can surface them to the client.
  */
 const twilio = require('twilio');
-const { logOut, logError } = require('../utils/logger');
+const { logOut } = require('../utils/logger');
 
 // Minimal E.164 dial-code → ISO-2. Longer prefixes first so `+1` doesn't eat `+44`.
 const DIAL_CODE_TO_COUNTRY = [
@@ -69,13 +69,11 @@ class TwilioNumberService {
 
         const accountSid = process.env.TWILIO_ACCOUNT_SID;
         const authToken = process.env.TWILIO_AUTH_TOKEN;
-        const messagingServiceSid = process.env.MESSAGING_SERVICE_SID;
         const serverBaseUrl = process.env.SERVER_BASE_URL;
 
         const missing = [];
         if (!accountSid) missing.push('TWILIO_ACCOUNT_SID');
         if (!authToken) missing.push('TWILIO_AUTH_TOKEN');
-        if (!messagingServiceSid) missing.push('MESSAGING_SERVICE_SID');
         if (!serverBaseUrl) missing.push('SERVER_BASE_URL');
 
         if (missing.length > 0) {
@@ -87,7 +85,6 @@ class TwilioNumberService {
         const hasScheme = /^https?:\/\//.test(serverBaseUrl);
         const origin = hasScheme ? serverBaseUrl.replace(/\/$/, '') : `http://${serverBaseUrl}`;
 
-        this.messagingServiceSid = messagingServiceSid;
         this.smsUrl = `${origin}/webhooks/messaging/inbound`;
         this.voiceUrl = `${origin}/voice/incoming`;
         this.statusCallbackUrl = `${origin}/webhooks/voice/status`;
@@ -164,22 +161,7 @@ class TwilioNumberService {
 
         logOut('TwilioNumberService', `Purchased ${purchased.phoneNumber} (sid=${purchased.sid}) for ${userGuid}`);
 
-        // 3. Attach to Messaging Service.
-        try {
-            await client.messaging.v1
-                .services(this.messagingServiceSid)
-                .phoneNumbers.create({ phoneNumberSid: purchased.sid });
-        } catch (err) {
-            logError('TwilioNumberService', `Failed to attach ${purchased.sid} to Messaging Service; releasing. ${err.message}`);
-            try {
-                await client.incomingPhoneNumbers(purchased.sid).remove();
-            } catch (releaseErr) {
-                logError('TwilioNumberService', `Release after attach-failure also failed: ${releaseErr.message}`);
-            }
-            throw wrapTwilioError(err, 'attach');
-        }
-
-        // 4. Persist.
+        // 3. Persist. Inbound SMS routes via the per-number smsUrl set at purchase.
         this.userService.updateUser(userGuid, {
             twilioNumber: purchased.phoneNumber,
             twilioNumberSid: purchased.sid
@@ -197,15 +179,6 @@ class TwilioNumberService {
         }
         const sid = user.twilioNumberSid;
         const client = this._getClient();
-
-        try {
-            await client.messaging.v1
-                .services(this.messagingServiceSid)
-                .phoneNumbers(sid)
-                .remove();
-        } catch (err) {
-            logOut('TwilioNumberService', `Detach from Messaging Service returned ${err.code || err.message} (continuing)`);
-        }
 
         try {
             await client.incomingPhoneNumbers(sid).remove();

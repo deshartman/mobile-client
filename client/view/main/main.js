@@ -81,7 +81,9 @@ async function populateMyNumber() {
 
 // Check if data is stale
 function isDataStale() {
-    const cachedTimestamp = sessionStorage.getItem('mainListCacheTimestamp');
+    const userGuid = sessionStorage.getItem('userGUID');
+    if (!userGuid) return true;
+    const cachedTimestamp = sessionStorage.getItem(`mainListCacheTimestamp:${userGuid}`);
     if (!cachedTimestamp) return true;
 
     const now = Date.now();

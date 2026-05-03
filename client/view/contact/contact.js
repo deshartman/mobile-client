@@ -265,8 +265,9 @@ async function handleSubmit() {
         contacts[primaryPhone] = savedContact;
         sessionStorage.setItem('contacts', JSON.stringify(contacts));
 
-        // Mark cache as stale so main page will refresh
-        sessionStorage.removeItem('mainListCacheTimestamp');
+        // Mark cache as stale so main page will refresh. Cache keys are scoped
+        // by userGUID; clearing just the timestamp is enough to force a refetch.
+        sessionStorage.removeItem(`mainListCacheTimestamp:${userGUID}`);
         
         console.log('[Contact] Contact saved successfully, cache invalidated');
         return true;

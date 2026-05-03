@@ -71,30 +71,53 @@ CREATE TABLE IF NOT EXISTS activities (
 );
 CREATE INDEX IF NOT EXISTS idx_activities_user_dt ON activities(user_guid, datetime DESC);
 
-CREATE TABLE IF NOT EXISTS conversations (
-    conversation_sid TEXT PRIMARY KEY,
-    user_guid        TEXT NOT NULL REFERENCES users(user_guid) ON DELETE CASCADE,
-    contact_guid     TEXT REFERENCES contacts(contact_guid) ON DELETE SET NULL,
-    remote_address   TEXT NOT NULL,
-    proxy_address    TEXT NOT NULL,
-    activity_id      TEXT REFERENCES activities(id) ON DELETE SET NULL,
-    created          TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS threads (
+    thread_id       TEXT PRIMARY KEY,
+    user_guid       TEXT NOT NULL REFERENCES users(user_guid) ON DELETE CASCADE,
+    contact_guid    TEXT REFERENCES contacts(contact_guid) ON DELETE SET NULL,
+    remote_address  TEXT NOT NULL,
+    proxy_address   TEXT NOT NULL,
+    activity_id     TEXT REFERENCES activities(id) ON DELETE SET NULL,
+    created         TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_conv_user_pair
-    ON conversations(user_guid, proxy_address, remote_address);
+CREATE INDEX IF NOT EXISTS idx_threads_user_pair
+    ON threads(user_guid, proxy_address, remote_address);
 
 CREATE TABLE IF NOT EXISTS messages (
-    message_sid      TEXT PRIMARY KEY,
-    conversation_sid TEXT NOT NULL REFERENCES conversations(conversation_sid) ON DELETE CASCADE,
-    direction        TEXT NOT NULL,
-    author           TEXT,
-    body             TEXT,
-    datetime         TEXT NOT NULL,
-    idx              INTEGER
+    message_sid  TEXT PRIMARY KEY,
+    thread_id    TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+    direction    TEXT NOT NULL,
+    author       TEXT,
+    body         TEXT,
+    datetime     TEXT NOT NULL,
+    idx          INTEGER,
+    -- Outbound delivery status from Twilio statusCallback:
+    --   queued → sent → delivered | failed | undelivered
+    -- Inbound rows leave this NULL. Initial insert uses 'queued' for outbound.
+    status       TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_messages_conv_dt
-    ON messages(conversation_sid, datetime);
+CREATE INDEX IF NOT EXISTS idx_messages_thread_dt
+    ON messages(thread_id, datetime);
 `;
+
+// One-shot cutover from Twilio Conversations to plain SMS. Old installs have a
+// `conversations` table keyed by CHxxx and a `messages` table with a
+// `conversation_sid` column. Drop both before running SCHEMA so the
+// CREATE TABLE IF NOT EXISTS for the new shape takes effect. Idempotent via
+// user_version so this only fires once.
+const USER_VERSION_SMS_CUTOVER = 1;
+const currentVersion = db.pragma('user_version', { simple: true });
+if (currentVersion < USER_VERSION_SMS_CUTOVER) {
+    const hasLegacyConversations = db.prepare(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'`
+    ).get();
+    if (hasLegacyConversations) {
+        logOut('DB', 'Cutover: dropping legacy conversations + messages tables');
+        db.exec('DROP TABLE IF EXISTS messages');
+        db.exec('DROP TABLE IF EXISTS conversations');
+    }
+    db.pragma(`user_version = ${USER_VERSION_SMS_CUTOVER}`);
+}
 
 db.exec(SCHEMA);
 
@@ -104,6 +127,13 @@ const contactCols = db.prepare(`PRAGMA table_info(contacts)`).all();
 if (!contactCols.some(c => c.name === 'photo_data')) {
     logOut('DB', 'Migrating contacts table: adding photo_data column');
     db.exec('ALTER TABLE contacts ADD COLUMN photo_data TEXT');
+}
+
+// Additive migration: messages.status for outbound delivery tracking.
+const messageCols = db.prepare(`PRAGMA table_info(messages)`).all();
+if (!messageCols.some(c => c.name === 'status')) {
+    logOut('DB', 'Migrating messages table: adding status column');
+    db.exec('ALTER TABLE messages ADD COLUMN status TEXT');
 }
 
 logOut('DB', `Database ready at ${DB_PATH}`);

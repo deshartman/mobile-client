@@ -1,14 +1,16 @@
 document.addEventListener('DOMContentLoaded', async () => {
+    const number = new URLSearchParams(window.location.search).get('number');
+    const contactJson = sessionStorage.getItem('currentContact');
+    const userGuid = sessionStorage.getItem('userGUID');
+
     // A call completing will add a Phone activity server-side. Invalidate the
     // main view's cache so the next load fetches fresh data and includes this
     // call — the SSE activity.added event fires while this page is still open
     // and misses the main view.
-    sessionStorage.removeItem('mainListCacheTimestamp');
-    sessionStorage.removeItem('mainListCache');
-
-    const number = new URLSearchParams(window.location.search).get('number');
-    const contactJson = sessionStorage.getItem('currentContact');
-    const userGuid = sessionStorage.getItem('userGUID');
+    if (userGuid) {
+        sessionStorage.removeItem(`mainListCacheTimestamp:${userGuid}`);
+        sessionStorage.removeItem(`mainListCache:${userGuid}`);
+    }
 
     let contactGuid = null;
     if (contactJson) {

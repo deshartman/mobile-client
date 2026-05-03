@@ -50,29 +50,32 @@ class AuthService {
     }
 
     /**
-     * Lazy-init. Mirrors ConversationsService._getClient so signup only needs
-     * Twilio creds when an OTP is actually sent.
+     * Lazy-init so signup only needs Twilio creds when an OTP is actually sent.
+     *
+     * OTP_FROM_NUMBER is a single SMS-capable Twilio number dedicated to sending
+     * verification codes. Per-user numbers can't send it — they don't exist
+     * until AFTER verification completes.
      */
     _getClient() {
         if (this.client) return this.client;
 
         const accountSid = process.env.TWILIO_ACCOUNT_SID;
         const authToken = process.env.TWILIO_AUTH_TOKEN;
-        const messagingServiceSid = process.env.MESSAGING_SERVICE_SID;
+        const otpFromNumber = process.env.OTP_FROM_NUMBER;
 
         const missing = [];
         if (!accountSid) missing.push('TWILIO_ACCOUNT_SID');
         if (!authToken) missing.push('TWILIO_AUTH_TOKEN');
-        if (!messagingServiceSid) missing.push('MESSAGING_SERVICE_SID');
+        if (!otpFromNumber) missing.push('OTP_FROM_NUMBER');
 
         if (missing.length > 0) {
             logError('AuthService', `Missing required env: ${missing.join(', ')}`);
             throw new Error(`Missing required auth env variables: ${missing.join(', ')}`);
         }
 
-        this.messagingServiceSid = messagingServiceSid;
+        this.otpFromNumber = otpFromNumber;
         this.client = twilio(accountSid, authToken);
-        logOut('AuthService', 'Twilio client initialised for OTP delivery');
+        logOut('AuthService', `Twilio client initialised for OTP delivery (from=${otpFromNumber})`);
         return this.client;
     }
 
@@ -96,7 +99,7 @@ class AuthService {
         const client = this._getClient();
         await client.messages.create({
             to: phone,
-            messagingServiceSid: this.messagingServiceSid,
+            from: this.otpFromNumber,
             body: `Your verification code is ${code}. It expires in 10 minutes.`
         });
 

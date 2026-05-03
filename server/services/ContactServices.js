@@ -99,6 +99,53 @@ class ContactService extends EventEmitter {
         this._insertActivity = db.prepare(
             'INSERT INTO activities (id, user_guid, type, datetime, duration, identity_value, contact_guid) VALUES (?, ?, ?, ?, ?, ?, ?)'
         );
+
+        // Back-linking unknown-identity activities/threads to a newly-created (or
+        // edited) contact. Normalise to digits so "+1 (555) 111-2222" matches
+        // "+15551112222". Only rewrites rows where contact_guid IS NULL so an
+        // existing link to another contact is never clobbered.
+        this._selectUnlinkedActivitiesByUser = db.prepare(
+            "SELECT id, identity_value FROM activities WHERE user_guid = ? AND contact_guid IS NULL AND identity_value IS NOT NULL"
+        );
+        this._linkActivityToContact = db.prepare(
+            'UPDATE activities SET contact_guid = ? WHERE id = ? AND contact_guid IS NULL'
+        );
+        this._selectUnlinkedThreadsByUser = db.prepare(
+            "SELECT thread_id, remote_address FROM threads WHERE user_guid = ? AND contact_guid IS NULL"
+        );
+        this._linkThreadToContact = db.prepare(
+            'UPDATE threads SET contact_guid = ? WHERE thread_id = ? AND contact_guid IS NULL'
+        );
+    }
+
+    /**
+     * After a contact is created or edited, match any unknown-identity
+     * activities + threads for this user whose identifier normalises to one
+     * of the contact's phone identities, and link them to the new contact.
+     * Runs in the caller's transaction.
+     */
+    _backlinkUnlinked(userGUID, contactGUID, identities) {
+        const toDigits = (s) => (s || '').replace(/\D/g, '');
+        const targetDigits = new Set(
+            (identities || [])
+                .map(i => toDigits(i.value))
+                .filter(d => d.length > 0)
+        );
+        if (targetDigits.size === 0) return;
+
+        const activities = this._selectUnlinkedActivitiesByUser.all(userGUID);
+        for (const a of activities) {
+            if (targetDigits.has(toDigits(a.identity_value))) {
+                this._linkActivityToContact.run(contactGUID, a.id);
+            }
+        }
+
+        const threads = this._selectUnlinkedThreadsByUser.all(userGUID);
+        for (const t of threads) {
+            if (targetDigits.has(toDigits(t.remote_address))) {
+                this._linkThreadToContact.run(contactGUID, t.thread_id);
+            }
+        }
     }
 
     _identitiesFor(contactGuid) {
@@ -164,6 +211,7 @@ class ContactService extends EventEmitter {
                 contact.photoData || null
             );
             identities.forEach(i => this._insertIdentity.run(guid, i.type, i.value));
+            this._backlinkUnlinked(userGUID, guid, identities);
         });
         tx();
 
@@ -192,6 +240,7 @@ class ContactService extends EventEmitter {
             if (identities !== null) {
                 this._deleteIdentitiesForContact.run(contactGUID);
                 identities.forEach(i => this._insertIdentity.run(contactGUID, i.type, i.value));
+                this._backlinkUnlinked(userGUID, contactGUID, identities);
             }
         });
         tx();

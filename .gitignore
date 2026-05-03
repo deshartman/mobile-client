@@ -21,3 +21,4 @@ CLAUDE-VoiceSDK.md
 .env*
 !.env.example
 !server/.env.example
+server/scripts/*

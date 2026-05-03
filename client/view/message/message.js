@@ -68,11 +68,26 @@ messageClearButton.addEventListener('click', () => {
     messageClearButton.style.display = 'none';
 });
 
+// Map Twilio delivery statuses to the short label we render on outbound
+// bubbles. Inbound bubbles never get a status. `queued`/`accepted`/`sending`/
+// `sent` all just mean "in flight" to the user — collapse to "Sending…" until
+// we have confirmation.
+function statusLabel(status) {
+    if (!status) return '';
+    switch (status) {
+        case 'delivered':   return 'Delivered';
+        case 'read':        return 'Read';
+        case 'failed':
+        case 'undelivered': return 'Failed';
+        default:            return 'Sending…';
+    }
+}
+
 /**
  * Build a message bubble. `messageSid` tags the DOM node so the SSE echo of
  * our own optimistic send can be deduped.
  */
-function createMessageElement(content, isSent, { datetime, messageSid } = {}) {
+function createMessageElement(content, isSent, { datetime, messageSid, status } = {}) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
     if (messageSid) messageDiv.dataset.messageSid = messageSid;
@@ -92,16 +107,41 @@ function createMessageElement(content, isSent, { datetime, messageSid } = {}) {
 
     messageDiv.appendChild(contentDiv);
     messageDiv.appendChild(timeDiv);
+
+    if (isSent) {
+        const statusDiv = document.createElement('div');
+        statusDiv.className = 'message-status';
+        statusDiv.textContent = statusLabel(status);
+        statusDiv.dataset.status = status || '';
+        messageDiv.appendChild(statusDiv);
+    }
+
     return messageDiv;
 }
 
 function appendMessage(msg) {
+    // Guard against re-render on re-hydration (visibilitychange catch-up).
+    if (msg.messageSid && messageContainer.querySelector(`[data-message-sid="${msg.messageSid}"]`)) {
+        return;
+    }
     const el = createMessageElement(msg.body, msg.direction === 'outbound', {
         datetime: msg.datetime,
-        messageSid: msg.messageSid
+        messageSid: msg.messageSid,
+        status: msg.status
     });
     messageContainer.appendChild(el);
     messageContainer.scrollTop = messageContainer.scrollHeight;
+}
+
+// Update the status indicator on a previously-rendered outbound bubble.
+// Called from the SSE `message.status` handler.
+function updateMessageStatus(messageSid, status) {
+    const bubble = messageContainer.querySelector(`[data-message-sid="${messageSid}"]`);
+    if (!bubble) return;
+    const statusEl = bubble.querySelector('.message-status');
+    if (!statusEl) return;
+    statusEl.textContent = statusLabel(status);
+    statusEl.dataset.status = status || '';
 }
 
 // Pending optimistic sends (content string) keyed to allow dedup against
@@ -114,7 +154,7 @@ async function sendMessage() {
 
     // Optimistic render — SSE echo will replace the data-message-sid once known.
     const pendingKey = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const optimisticEl = createMessageElement(content, true, { messageSid: pendingKey });
+    const optimisticEl = createMessageElement(content, true, { messageSid: pendingKey, status: 'queued' });
     messageContainer.appendChild(optimisticEl);
     messageContainer.scrollTop = messageContainer.scrollHeight;
     pendingOutbound.add(content);
@@ -135,12 +175,14 @@ async function sendMessage() {
             body: JSON.stringify({ userGuid, to: remoteNumber, body: content, contactGuid })
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const { messageSid } = await res.json();
+        const { messageSid, status } = await res.json();
         // Swap the pending key for the real SID so the SSE echo can dedupe.
         if (messageSid) optimisticEl.dataset.messageSid = messageSid;
+        if (status) updateMessageStatus(messageSid, status);
     } catch (err) {
         console.error('[Message] Failed to send:', err);
         optimisticEl.classList.add('send-failed');
+        updateMessageStatus(optimisticEl.dataset.messageSid, 'failed');
         pendingOutbound.delete(content);
     }
 }
@@ -218,7 +260,24 @@ function subscribeToMessages() {
         }
         appendMessage(msg);
     });
+
+    es.addEventListener('message.status', (e) => {
+        let payload;
+        try { payload = JSON.parse(e.data); } catch (err) { return; }
+        const currentRemote = new URLSearchParams(window.location.search).get('number');
+        if (normalizePhone(payload.remoteAddress) !== normalizePhone(currentRemote)) return;
+        updateMessageStatus(payload.messageSid, payload.status);
+    });
 }
+
+// SSE can't survive mobile tab suspension — when the tab comes back to the
+// foreground, re-hydrate to catch messages that arrived while hidden. The
+// dedup guard in appendMessage prevents duplicates.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        hydrateThread();
+    }
+});
 
 // Initial setup
 messageClearButton.style.display = 'none';

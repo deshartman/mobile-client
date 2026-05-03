@@ -100,13 +100,18 @@ class ActivityList {
         if (this.rowsContainer) this.rowsContainer.innerHTML = '';
     }
 
+    // Cache keys scoped by userGUID so switching users in the same tab
+    // doesn't leak user A's rows into user B's session.
+    _cacheKey() { return `mainListCache:${this.userId}`; }
+    _cacheTsKey() { return `mainListCacheTimestamp:${this.userId}`; }
+
     // Fetch data from server
     async fetchData(forceRefresh = false) {
         this.showLoading();
 
         try {
-            const cachedData = sessionStorage.getItem('mainListCache');
-            const cachedTimestamp = sessionStorage.getItem('mainListCacheTimestamp');
+            const cachedData = sessionStorage.getItem(this._cacheKey());
+            const cachedTimestamp = sessionStorage.getItem(this._cacheTsKey());
             const now = Date.now();
             const dataAge = cachedTimestamp ? now - Number.parseInt(cachedTimestamp) : Infinity;
             const maxAge = 5 * 60 * 1000;
@@ -119,8 +124,8 @@ class ActivityList {
                 const rows = await ApiService.fetchMainList(this.userId);
                 console.log('Fetched main-list rows:', rows);
                 this.rows = rows;
-                sessionStorage.setItem('mainListCache', JSON.stringify(rows));
-                sessionStorage.setItem('mainListCacheTimestamp', now.toString());
+                sessionStorage.setItem(this._cacheKey(), JSON.stringify(rows));
+                sessionStorage.setItem(this._cacheTsKey(), now.toString());
             }
 
             this.hasError = false;
@@ -253,8 +258,8 @@ class ActivityList {
                 }
 
                 this.sortRows();
-                sessionStorage.setItem('mainListCache', JSON.stringify(this.rows));
-                sessionStorage.setItem('mainListCacheTimestamp', Date.now().toString());
+                sessionStorage.setItem(this._cacheKey(), JSON.stringify(this.rows));
+                sessionStorage.setItem(this._cacheTsKey(), Date.now().toString());
                 this.render();
             } catch (err) {
                 console.error('[SSE] Failed to handle activity.added:', err);
@@ -300,18 +305,12 @@ class ActivityList {
         // Subscribe to server-sent events for real-time activity updates
         this.subscribeToEvents();
 
-        // Set up visibility change listener to refresh data when app comes to foreground
+        // Always re-fetch on foreground. SSE can't survive mobile tab suspension;
+        // events delivered while hidden are lost. The cheapest correct fix is to
+        // treat the cache as disposable on visibility return.
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-                const cachedTimestamp = sessionStorage.getItem('mainListCacheTimestamp');
-                const now = Date.now();
-                const dataAge = cachedTimestamp ? now - Number.parseInt(cachedTimestamp) : Infinity;
-                const maxAge = 5 * 60 * 1000;
-
-                if (dataAge > maxAge) {
-                    console.log('Data is stale, refreshing...');
-                    this.fetchData(true);
-                }
+                this.fetchData(true);
             }
         });
     }

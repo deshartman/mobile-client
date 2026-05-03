@@ -192,6 +192,23 @@
     align-self: flex-start;
 }
 
+.message-status {
+    font-size: 11px;
+    color: var(--color-text-weak);
+    align-self: flex-end;
+    margin: 0 8px;
+}
+
+.message-status[data-status="failed"],
+.message-status[data-status="undelivered"] {
+    color: var(--color-status-error, #c62828);
+}
+
+.message-status[data-status="delivered"],
+.message-status[data-status="read"] {
+    color: var(--color-status-ok, #2e7d32);
+}
+
 /* Message Input Container Styles */
 .message-input-container {
     position: fixed;

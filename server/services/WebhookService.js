@@ -1,12 +1,12 @@
 const { logOut, logError } = require('../utils/logger');
 
 class WebhookService {
-    constructor({ contactService, userService, sseService, messagesRepo, conversationsService }) {
+    constructor({ contactService, userService, sseService, messagesRepo, messagingService }) {
         this.contactService = contactService;
         this.userService = userService;
         this.sseService = sseService;
         this.messagesRepo = messagesRepo;
-        this.conversationsService = conversationsService;
+        this.messagingService = messagingService;
         this.callMap = new Map();
     }
 
@@ -86,164 +86,103 @@ class WebhookService {
     }
 
     /**
-     * Dispatch a Twilio Conversations post-event webhook payload.
-     *
-     * Expected events on the default chat service webhook URL:
-     *   - onConversationAdded : autocreate from inbound SMS, or the server's own create
-     *   - onParticipantAdded  : SMS participant binding info (log only)
-     *   - onMessageAdded      : both inbound and outbound — the canonical write path
-     *
-     * Payload fields follow Twilio's post-event convention: PascalCase with dotted
-     * keys flattened, e.g. `MessagingBinding.ProxyAddress`.
+     * Handle an outbound SMS status callback from Twilio. Payload:
+     *   { MessageSid, MessageStatus, ErrorCode?, ErrorMessage? }
+     * Updates the local row and broadcasts a `message.status` event so the
+     * UI can update the bubble indicator (delivered / failed / etc).
      */
-    handleConversationsWebhook(payload) {
-        const eventType = payload.EventType;
-        logOut('WebhookService', `Conversations webhook: ${eventType}`);
-
-        switch (eventType) {
-            case 'onConversationAdded':
-                this._handleConversationAdded(payload);
-                return;
-            case 'onParticipantAdded':
-                this._handleParticipantAdded(payload);
-                return;
-            case 'onMessageAdded':
-                this._handleMessageAdded(payload);
-                return;
-            default:
-                // Other events (onMessageUpdated, onConversationStateUpdated, …) are not consumed yet.
-                return;
-        }
-    }
-
-    _handleConversationAdded(payload) {
-        const conversationSid = payload.ConversationSid;
-        if (!conversationSid) return;
-
-        // If the server created this conversation via sendMessage(), we've already
-        // inserted the row. The autocreate-from-inbound path is handled lazily in
-        // _handleMessageAdded once we've seen the participant binding.
-        const existing = this.messagesRepo.findConversationBySid(conversationSid);
-        logOut('WebhookService', `Conversation ${conversationSid} added (known=${!!existing})`);
-    }
-
-    _handleParticipantAdded(payload) {
-        // Log only — binding info is also available on the message itself via Author.
-        const { ConversationSid, ParticipantSid } = payload;
-        const proxy = payload['MessagingBinding.ProxyAddress'];
-        const addr = payload['MessagingBinding.Address'];
-        if (proxy || addr) {
-            logOut('WebhookService', `Participant ${ParticipantSid} added to ${ConversationSid} (addr=${addr}, proxy=${proxy})`);
-        }
-    }
-
-    _handleMessageAdded(payload) {
-        const conversationSid = payload.ConversationSid;
-        const messageSid = payload.MessageSid;
-        if (!conversationSid || !messageSid) {
-            logError('WebhookService', 'onMessageAdded missing ConversationSid/MessageSid');
+    handleMessageStatus(payload) {
+        const { MessageSid, MessageStatus } = payload;
+        if (!MessageSid || !MessageStatus) {
+            logError('WebhookService', 'handleMessageStatus: missing MessageSid/MessageStatus');
             return;
         }
 
-        let conversation = this.messagesRepo.findConversationBySid(conversationSid);
-
-        // Autocreate path: inbound SMS to a user's Twilio number. The payload for
-        // inbound messages carries the author (the remote SMS address) and a
-        // ProxyAddress binding we can use to find the owning user.
-        if (!conversation) {
-            conversation = this._lazyCreateInboundConversation(payload);
-            if (!conversation) {
-                logError('WebhookService', `onMessageAdded for unknown conversation ${conversationSid} (no user match)`);
-                return;
-            }
-        }
-
-        const author = payload.Author;
-        const direction = author === conversation.proxyAddress ? 'outbound' : 'inbound';
-        const body = payload.Body;
-        const datetime = payload.DateCreated || new Date().toISOString();
-        const index = payload.Index == null ? null : parseInt(payload.Index, 10);
-
-        const inserted = this.messagesRepo.insertMessageIfAbsent({
-            messageSid,
-            conversationSid,
-            direction,
-            author,
-            body,
-            datetime,
-            index
-        });
-
-        if (!inserted) {
-            logOut('WebhookService', `Duplicate message ${messageSid} ignored`);
+        const updated = this.messagesRepo.updateMessageStatus(MessageSid, MessageStatus);
+        if (!updated) {
+            logOut('WebhookService', `Status callback for unknown ${MessageSid} (${MessageStatus}) — ignored`);
             return;
         }
 
-        // First message in this conversation → log a Message activity once.
-        if (!conversation.activityId) {
-            const activity = this.contactService.addActivity(conversation.userGuid, {
-                type: 'Message',
-                datetime,
-                duration: 0,
-                identityValue: conversation.remoteAddress,
-                contactGuid: conversation.contactGuid
-            });
-            this.messagesRepo.setConversationActivity(conversationSid, activity.id);
-            conversation = { ...conversation, activityId: activity.id };
-        }
-
+        logOut('WebhookService', `Status ${MessageSid} → ${MessageStatus}`);
         if (this.sseService) {
-            this.sseService.broadcast(conversation.userGuid, 'message.added', {
-                messageSid,
-                conversationSid,
-                remoteAddress: conversation.remoteAddress,
-                proxyAddress: conversation.proxyAddress,
-                contactGuid: conversation.contactGuid,
-                direction,
-                author,
-                body,
-                datetime,
-                index
+            this.sseService.broadcast(updated.userGuid, 'message.status', {
+                messageSid: updated.messageSid,
+                threadId: updated.threadId,
+                remoteAddress: updated.remoteAddress,
+                status: updated.status
             });
         }
     }
 
     /**
-     * Build a conversations row for an inbound SMS arriving on a user's Twilio
-     * number. Only called when onMessageAdded fires for an unknown
-     * ConversationSid — the typical autocreate path.
+     * Handle an inbound SMS posted by Twilio to the per-number smsUrl.
+     * Payload is Twilio's standard form-encoded SMS shape:
+     *   { From, To, Body, MessageSid, ... }
+     *
+     * Find/create the thread, persist the message (idempotent on MessageSid),
+     * log a Message activity on first message, and broadcast over SSE.
      */
-    _lazyCreateInboundConversation(payload) {
-        // Inbound SMS webhooks carry the participant binding on the message.
-        // Common shape: MessagingBinding.Address (remote) + MessagingBinding.ProxyAddress (our number).
-        const proxyAddress = payload['MessagingBinding.ProxyAddress'] || payload.ProxyAddress;
-        const remoteAddress = payload['MessagingBinding.Address'] || payload.Author;
+    handleInboundSms(payload) {
+        const { From, To, Body, MessageSid } = payload;
 
-        if (!proxyAddress) {
-            logError('WebhookService', 'Cannot lazy-create conversation: no MessagingBinding.ProxyAddress on payload');
-            return null;
+        if (!From || !To || !MessageSid) {
+            logError('WebhookService', 'handleInboundSms: missing From/To/MessageSid');
+            return;
         }
 
-        const owner = this.userService.getUserByTwilioNumber(proxyAddress);
+        const owner = this.userService.getUserByTwilioNumber(To);
         if (!owner) {
-            logError('WebhookService', `Inbound conversation for unowned proxyAddress ${proxyAddress}`);
-            return null;
+            logError('WebhookService', `Inbound SMS ${MessageSid} for unowned number ${To}`);
+            return;
+        }
+        const userGuid = owner.userGUID;
+
+        const thread = this.messagingService.ensureThread({
+            userGuid,
+            remoteAddress: From
+        });
+
+        const datetime = new Date().toISOString();
+        const inserted = this.messagesRepo.insertMessageIfAbsent({
+            messageSid: MessageSid,
+            threadId: thread.threadId,
+            direction: 'inbound',
+            author: From,
+            body: Body,
+            datetime,
+            index: null
+        });
+
+        if (!inserted) {
+            logOut('WebhookService', `Duplicate inbound ${MessageSid} ignored`);
+            return;
         }
 
-        const userGuid = owner.userGUID;
-        const contactGuid = this.conversationsService
-            ? this.conversationsService.resolveContactGuid(userGuid, remoteAddress)
-            : null;
+        if (!thread.activityId) {
+            const activity = this.contactService.addActivity(userGuid, {
+                type: 'Message',
+                datetime,
+                duration: 0,
+                identityValue: thread.remoteAddress,
+                contactGuid: thread.contactGuid
+            });
+            this.messagesRepo.setThreadActivity(thread.threadId, activity.id);
+        }
 
-        logOut('WebhookService', `Lazy-creating conversation row for inbound ${payload.ConversationSid} (${proxyAddress} ← ${remoteAddress})`);
-
-        return this.messagesRepo.insertConversation({
-            conversationSid: payload.ConversationSid,
-            userGuid,
-            contactGuid,
-            remoteAddress,
-            proxyAddress
-        });
+        if (this.sseService) {
+            this.sseService.broadcast(userGuid, 'message.added', {
+                messageSid: MessageSid,
+                threadId: thread.threadId,
+                remoteAddress: thread.remoteAddress,
+                proxyAddress: thread.proxyAddress,
+                contactGuid: thread.contactGuid,
+                direction: 'inbound',
+                author: From,
+                body: Body,
+                datetime
+            });
+        }
     }
 }
 

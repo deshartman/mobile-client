@@ -21,12 +21,6 @@ const USERS = [
         name: 'Jane Smith',
         email: 'jane.smith@example.com',
         created: '2021-09-01T00:00:00Z'
-    },
-    {
-        user_guid: '14310e20-4416-40bc-aeb8-daf093f2ed90',
-        name: 'Des Hartman',
-        email: 'dhartman@twilio.com',
-        created: '2021-09-01T00:00:00Z'
     }
 ];
 
@@ -44,12 +38,7 @@ const CONTACTS = [
     { guid: 'contact-5', user: '6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx', firstName: 'David', lastName: 'Wilson', company: 'Startup Inc',
       identities: [{ type: 'Phone', value: '+1 (555) 888-8888' }, { type: 'Message', value: '+1 (555) 888-8888' }] },
     { guid: 'contact-6', user: '6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx', firstName: 'Lisa', lastName: 'Brown', company: 'Creative Design',
-      identities: [{ type: 'Phone', value: '+1 (555) 999-9999' }, { type: 'WhatsApp', value: '+1 (555) 999-9999' }] },
-    // Des Hartman
-    { guid: 'contact-7', user: '14310e20-4416-40bc-aeb8-daf093f2ed90', firstName: 'Alice', lastName: 'Johnson', company: 'Tech Solutions',
-      identities: [{ type: 'Phone', value: '+1 (555) 111-2222' }, { type: 'WhatsApp', value: '+1 (555) 111-2222' }] },
-    { guid: 'contact-8', user: '14310e20-4416-40bc-aeb8-daf093f2ed90', firstName: 'Bob', lastName: 'Williams', company: 'Digital Agency',
-      identities: [{ type: 'Phone', value: '+1 (555) 333-4444' }, { type: 'Message', value: '+1 (555) 333-4444' }] }
+      identities: [{ type: 'Phone', value: '+1 (555) 999-9999' }, { type: 'WhatsApp', value: '+1 (555) 999-9999' }] }
 ];
 
 const ACTIVITIES = [
@@ -62,11 +51,7 @@ const ACTIVITIES = [
     { user: '6fdf6ffc-ed77-94fa-407e-a7b86ed9e59d', type: 'Phone',    datetime: '2025-02-21T11:05:00', duration: 32, identityValue: '+1 (555) 666-6666', contactGuid: 'contact-3' },
     // Jane Smith
     { user: '6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx', type: 'Phone',    datetime: '2025-02-23T02:30:00', duration: 28, identityValue: '+1 (555) 888-8888', contactGuid: 'contact-5' },
-    { user: '6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx', type: 'WhatsApp', datetime: '2025-02-22T15:45:00', duration: 22, identityValue: '+1 (555) 999-9999', contactGuid: 'contact-6' },
-    // Des Hartman
-    { user: '14310e20-4416-40bc-aeb8-daf093f2ed90', type: 'Phone',    datetime: '2025-07-17T09:30:00', duration: 15, identityValue: '+1 (555) 111-2222', contactGuid: 'contact-7' },
-    { user: '14310e20-4416-40bc-aeb8-daf093f2ed90', type: 'WhatsApp', datetime: '2025-07-17T08:15:00', duration: 8,  identityValue: '+1 (555) 111-2222', contactGuid: 'contact-7' },
-    { user: '14310e20-4416-40bc-aeb8-daf093f2ed90', type: 'Message',  datetime: '2025-07-16T16:45:00', duration: 5,  identityValue: '+1 (555) 333-4444', contactGuid: 'contact-8' }
+    { user: '6fdf6ffc-ed77-94fa-407e-a7b86ed9exxx', type: 'WhatsApp', datetime: '2025-02-22T15:45:00', duration: 22, identityValue: '+1 (555) 999-9999', contactGuid: 'contact-6' }
 ];
 
 function seed() {
