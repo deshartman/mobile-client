@@ -421,7 +421,7 @@ const validateTwilioRequest = (req, res, next) => {
 app.post('/webhooks/voice/status', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
     logOut('API', `POST /webhooks/voice/status - ${JSON.stringify(req.body)}`);
     webhookService.handleVoiceStatus(req.body);
-    res.status(204).send();
+    res.type('text/xml').send('<Response/>');
 });
 
 // Twilio Conversations post-event webhook (default chat service).
@@ -429,7 +429,7 @@ app.post('/webhooks/voice/status', express.urlencoded({ extended: false }), vali
 app.post('/webhooks/conversations', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
     logOut('API', `POST /webhooks/conversations - ${req.body.EventType} conv=${req.body.ConversationSid || ''} msg=${req.body.MessageSid || ''} author=${req.body.Author || ''}`);
     webhookService.handleConversationsWebhook(req.body);
-    res.status(204).send();
+    res.type('text/xml').send('<Response/>');
 });
 
 // Messaging Service "Send a webhook" bridge for inbound SMS.
