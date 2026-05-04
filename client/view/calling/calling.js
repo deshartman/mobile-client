@@ -62,14 +62,41 @@ document.addEventListener('DOMContentLoaded', async () => {
         searchClearButton.style.display = 'none';
     });
 
-    // ---- Speaker / Keypad toggles (UI only — wiring these to the real Device is a follow-up) ----
+    // ---- Speaker / Keypad toggles ----
+    // Speaker button cycles Twilio Device's audio output through the available
+    // output devices. Works on desktop Chrome + Android Chrome. On iOS Safari
+    // setSinkId is a no-op (WebRTC audio is platform-locked to the speaker),
+    // so the UI toggles but audio routing won't actually change — documented
+    // limitation, not a bug. Users on iOS who want earpiece mode need Bluetooth
+    // or wired headphones.
+    let speakerOn = true;   // visual state; reflects the icon, not physical routing
     controlButtons.forEach(button => {
         const label = button.querySelector('span')?.textContent;
         if (label === 'Speaker') {
             button.addEventListener('click', () => {
                 const icon = button.querySelector('i');
-                icon.classList.toggle('fa-volume-mute');
-                icon.classList.toggle('fa-volume-up');
+                try {
+                    const available = window.deviceService.getAvailableOutputDevices();
+                    if (!available || available.size === 0) {
+                        console.warn('[Calling] No output devices available to toggle');
+                    } else {
+                        // Cycle through output devices. On devices where the
+                        // browser exposes [default, speaker, earpiece], this
+                        // walks between them. On devices with one entry this
+                        // is a no-op.
+                        const ids = Array.from(available.keys());
+                        const current = window.deviceService.getSpeakerDevices();
+                        const currentId = current && current.size ? Array.from(current)[0]?.deviceId : null;
+                        const currentIdx = currentId ? ids.indexOf(currentId) : -1;
+                        const nextId = ids[(currentIdx + 1) % ids.length];
+                        window.deviceService.setSpeakerDevices([nextId]);
+                    }
+                } catch (err) {
+                    console.error('[Calling] Speaker toggle failed:', err);
+                }
+                speakerOn = !speakerOn;
+                icon.classList.toggle('fa-volume-up', speakerOn);
+                icon.classList.toggle('fa-volume-mute', !speakerOn);
             });
         } else if (label === 'Keypad') {
             button.addEventListener('click', () => {

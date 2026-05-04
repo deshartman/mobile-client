@@ -58,7 +58,9 @@ async function postJson(url, body) {
 
 async function handleSendOtp() {
     clearError();
-    const phone = $('phone').value.trim();
+    // Strip all whitespace so pasted numbers like "+61 401 277 115" are
+    // accepted. The server regex still requires strict E.164.
+    const phone = $('phone').value.replace(/\s+/g, '');
     if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
         showError('Enter a phone number in E.164 format (e.g. +15551234567)');
         return;
