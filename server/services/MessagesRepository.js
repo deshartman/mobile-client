@@ -32,7 +32,8 @@ const rowToMessage = (row) => ({
     body: row.body,
     datetime: row.datetime,
     index: row.idx,
-    status: row.status
+    status: row.status,
+    readAt: row.read_at || null
 });
 
 class MessagesRepository {
@@ -71,6 +72,26 @@ class MessagesRepository {
         );
         this._selectMessageBySid = db.prepare(
             'SELECT m.*, t.user_guid, t.remote_address, t.proxy_address, t.contact_guid FROM messages m JOIN threads t ON t.thread_id = m.thread_id WHERE m.message_sid = ?'
+        );
+
+        // Unread-indicator support. Rolls up one row per thread of unread
+        // INBOUND messages (outbound rows are ignored — they never count as
+        // unread). The partial index idx_messages_unread makes this O(unread).
+        this._selectUnreadCountsByUser = db.prepare(`
+            SELECT t.thread_id       AS thread_id,
+                   t.contact_guid    AS contact_guid,
+                   t.remote_address  AS remote_address,
+                   COUNT(m.message_sid) AS unread_count
+            FROM threads t
+            JOIN messages m ON m.thread_id = t.thread_id
+            WHERE t.user_guid = ?
+              AND m.direction = 'inbound'
+              AND m.read_at IS NULL
+            GROUP BY t.thread_id
+        `);
+        this._markThreadReadUpdate = db.prepare(
+            `UPDATE messages SET read_at = ?
+             WHERE thread_id = ? AND direction = 'inbound' AND read_at IS NULL`
         );
     }
 
@@ -128,6 +149,30 @@ class MessagesRepository {
 
     getMessages(threadId) {
         return this._selectMessagesForThread.all(threadId).map(rowToMessage);
+    }
+
+    /**
+     * One row per thread that has at least one unread inbound message.
+     * Shape: { threadId, contactGuid, remoteAddress, unreadCount }.
+     * ContactService merges these into the main-list response.
+     */
+    unreadCountsByThreadForUser(userGuid) {
+        return this._selectUnreadCountsByUser.all(userGuid).map(r => ({
+            threadId: r.thread_id,
+            contactGuid: r.contact_guid,
+            remoteAddress: r.remote_address,
+            unreadCount: r.unread_count
+        }));
+    }
+
+    /**
+     * Stamp `read_at = nowIso` on every inbound, currently-unread message
+     * in the thread. Returns the number of rows updated; 0 means the thread
+     * was already fully read (caller should skip the SSE broadcast).
+     */
+    markThreadRead(threadId, nowIso) {
+        const result = this._markThreadReadUpdate.run(nowIso, threadId);
+        return result.changes;
     }
 
     /**

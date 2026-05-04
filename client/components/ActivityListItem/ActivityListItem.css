@@ -63,6 +63,39 @@
     text-overflow: ellipsis;
 }
 
+/* Unread-indicator dot on the avatar (top-right corner of the circle). */
+.list-item-icon.unread::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #e53935;
+    border: 2px solid white;
+    box-sizing: content-box;
+}
+
+/* Unread-indicator dot on the Message action button — anchored to the
+ * icon glyph rather than the whole button, which is ~25% of the drawer
+ * width and would place the dot near the next button's edge. */
+.action-button.unread i {
+    position: relative;
+}
+.action-button.unread i::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    right: -8px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #e53935;
+    border: 2px solid #fafafa;
+    box-sizing: content-box;
+}
+
 .list-item-subtitle {
     color: #757575;
     font-size: 0.9em;
@@ -105,6 +138,7 @@
 }
 
 .action-button {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;

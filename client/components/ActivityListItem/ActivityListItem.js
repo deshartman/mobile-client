@@ -158,6 +158,15 @@ class ActivityListItem {
         const title = this.element.querySelector('.list-item-title');
         title.innerHTML = this.getDisplayName();
 
+        // Unread-indicator dots: one on the avatar (visible when row is
+        // collapsed) and one on the Message action button (visible when
+        // expanded). Both are purely CSS ::after markers gated by .unread.
+        if ((this.row.unreadCount || 0) > 0) {
+            iconWrap.classList.add('unread');
+            const messageBtn = this.element.querySelector('.action-button[data-action="message"]');
+            if (messageBtn) messageBtn.classList.add('unread');
+        }
+
         const subtitle = this.element.querySelector('.list-item-subtitle');
         subtitle.textContent = this.getCompanyName() || ' ';
 

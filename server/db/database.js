@@ -153,6 +153,17 @@ if (!messageCols.some(c => c.name === 'status')) {
     db.exec('ALTER TABLE messages ADD COLUMN status TEXT');
 }
 
+// Additive migration: messages.read_at. NULL means "unread" (for inbound
+// messages); set to an ISO timestamp when the user views the thread.
+// Outbound rows leave this NULL — it's meaningless for them.
+if (!messageCols.some(c => c.name === 'read_at')) {
+    logOut('DB', 'Migrating messages table: adding read_at column');
+    db.exec('ALTER TABLE messages ADD COLUMN read_at TEXT');
+}
+// Partial index accelerates the per-user unread rollup on the main list.
+db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_unread
+         ON messages(thread_id) WHERE direction = 'inbound' AND read_at IS NULL`);
+
 // Additive migration: activities.call_sid for Twilio CallSid linkage used by
 // the transcription feature (call-detail view joins activities → transcriptions).
 const activityCols = db.prepare(`PRAGMA table_info(activities)`).all();

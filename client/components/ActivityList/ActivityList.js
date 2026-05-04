@@ -266,6 +266,51 @@ class ActivityList {
             }
         });
 
+        // Inbound SMS arriving live — bump the matching row's unread count so
+        // the title bolds without waiting for the next refresh. Outbound
+        // messages never count as unread.
+        source.addEventListener('message.added', (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.direction !== 'inbound') return;
+
+                const toDigits = (s) => (s || '').replace(/\D/g, '');
+                const msgDigits = toDigits(msg.remoteAddress);
+                const row = this.rows.find(r => {
+                    if (r.kind === 'contact') return r.guid === msg.contactGuid;
+                    return toDigits(r.identityValue) === msgDigits;
+                });
+                if (!row) return;  // activity.added will handle roster creation
+
+                row.unreadCount = (row.unreadCount || 0) + 1;
+                sessionStorage.setItem(this._cacheKey(), JSON.stringify(this.rows));
+                this.render();
+            } catch (err) {
+                console.error('[SSE] Failed to handle message.added:', err);
+            }
+        });
+
+        // Thread was marked read (by this tab/device or another one). Clear
+        // the row's unread count live; no re-sort needed.
+        source.addEventListener('thread.read', (event) => {
+            try {
+                const payload = JSON.parse(event.data);
+                const toDigits = (s) => (s || '').replace(/\D/g, '');
+                const remoteDigits = toDigits(payload.remoteAddress);
+                const row = this.rows.find(r => {
+                    if (r.kind === 'contact') return r.guid === payload.contactGuid;
+                    return toDigits(r.identityValue) === remoteDigits;
+                });
+                if (!row || !row.unreadCount) return;
+
+                row.unreadCount = 0;
+                sessionStorage.setItem(this._cacheKey(), JSON.stringify(this.rows));
+                this.render();
+            } catch (err) {
+                console.error('[SSE] Failed to handle thread.read:', err);
+            }
+        });
+
         source.onerror = (err) => {
             console.warn('[SSE] connection error:', err);
         };

@@ -214,13 +214,51 @@ function getContactName() {
     return 'Contact';
 }
 
+// Tracked at module scope so the SSE `message.added` handler can also fire
+// mark-read when a live inbound arrives while the thread is already open.
+let currentThreadId = null;
+
+function markThreadRead() {
+    if (!userGuid || !currentThreadId) return;
+    fetch(`/messaging/thread/${userGuid}/${currentThreadId}/read`, { method: 'POST' })
+        .catch(err => console.warn('[Message] mark-read failed:', err));
+
+    // Navigation back to the main list re-initializes that view from its
+    // sessionStorage cache (5-min TTL) — the SSE `thread.read` event we
+    // just triggered server-side won't help because the main list isn't
+    // listening. Patch the cached row in-place so the dot clears on return.
+    try {
+        const cacheKey = `mainListCache:${userGuid}`;
+        const cached = sessionStorage.getItem(cacheKey);
+        if (!cached) return;
+        const rows = JSON.parse(cached);
+        const toDigits = (s) => (s || '').replace(/\D/g, '');
+        const remoteDigits = toDigits(remoteNumber);
+        for (const r of rows) {
+            const matches = r.kind === 'contact'
+                ? (r.identities || []).some(id => toDigits(id.value) === remoteDigits)
+                : toDigits(r.identityValue) === remoteDigits;
+            if (matches) r.unreadCount = 0;
+        }
+        sessionStorage.setItem(cacheKey, JSON.stringify(rows));
+    } catch (err) {
+        console.warn('[Message] Failed to patch main-list cache:', err);
+    }
+}
+
 async function hydrateThread() {
     if (!userGuid || !remoteNumber) return;
     try {
         const res = await fetch(`/messaging/thread/${userGuid}?to=${encodeURIComponent(remoteNumber)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const { messages } = await res.json();
+        const { threadId, messages } = await res.json();
+        if (threadId) currentThreadId = threadId;
         messages.forEach(appendMessage);
+
+        // Opening (or returning to) the thread clears any unread state.
+        // The endpoint is idempotent — markedCount: 0 when there's nothing
+        // to mark — so calling on every hydrate is safe.
+        markThreadRead();
     } catch (err) {
         console.error('[Message] Failed to hydrate thread:', err);
     }
@@ -259,6 +297,14 @@ function subscribeToMessages() {
             }
         }
         appendMessage(msg);
+
+        // Live inbound while the thread is open — user has seen it, so
+        // clear the unread state server-side. First-message-of-new-thread
+        // case: capture the threadId that hydrate didn't have yet.
+        if (msg.direction === 'inbound') {
+            if (msg.threadId && !currentThreadId) currentThreadId = msg.threadId;
+            markThreadRead();
+        }
     });
 
     es.addEventListener('message.status', (e) => {

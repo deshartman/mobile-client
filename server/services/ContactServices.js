@@ -30,8 +30,12 @@ const rowToContact = (row, identities) => {
 };
 
 class ContactService extends EventEmitter {
-    constructor() {
+    // messagesRepo is optional — injected by server.js for the unread-count
+    // rollup on the main list. Tests / seed scripts can omit it; main-list
+    // rows just won't carry `unreadCount` in that case (treated as 0 client-side).
+    constructor({ messagesRepo } = {}) {
         super();
+        this._messagesRepo = messagesRepo || null;
 
         this._selectContactsForUser = db.prepare(
             'SELECT * FROM contacts WHERE user_guid = ? ORDER BY first_name, last_name'
@@ -165,6 +169,28 @@ class ContactService extends EventEmitter {
 
     getMainListRows(userGUID) {
         const rows = this._selectMainListRows.all(userGUID, userGUID, userGUID);
+
+        // Roll up unread counts per {contactGuid, digits(remoteAddress)} so we
+        // can stamp each row (contact OR unknown) with its own unreadCount.
+        // Digits-normalising remote_address lets an unknown row match the
+        // same number written as "+61 401..." or "+61401...".
+        const toDigits = (s) => (s || '').replace(/\D/g, '');
+        const unreadByContact = new Map();   // contactGuid → count
+        const unreadByDigits = new Map();    // digits(remote_address) → count
+        if (this._messagesRepo) {
+            const unreadRows = this._messagesRepo.unreadCountsByThreadForUser(userGUID);
+            for (const u of unreadRows) {
+                if (u.contactGuid) {
+                    unreadByContact.set(u.contactGuid,
+                        (unreadByContact.get(u.contactGuid) || 0) + u.unreadCount);
+                }
+                const d = toDigits(u.remoteAddress);
+                if (d) {
+                    unreadByDigits.set(d, (unreadByDigits.get(d) || 0) + u.unreadCount);
+                }
+            }
+        }
+
         return rows.map(r => {
             if (r.kind === 'contact') {
                 return {
@@ -176,7 +202,8 @@ class ContactService extends EventEmitter {
                     photoData: r.photo_data || null,
                     identities: this._identitiesFor(r.guid),
                     identityValue: null,
-                    lastInteractedAt: r.last_interacted_at || null
+                    lastInteractedAt: r.last_interacted_at || null,
+                    unreadCount: unreadByContact.get(r.guid) || 0
                 };
             }
             return {
@@ -188,7 +215,8 @@ class ContactService extends EventEmitter {
                 photoData: null,
                 identities: [],
                 identityValue: r.identity_value,
-                lastInteractedAt: r.last_interacted_at || null
+                lastInteractedAt: r.last_interacted_at || null,
+                unreadCount: unreadByDigits.get(toDigits(r.identity_value)) || 0
             };
         });
     }

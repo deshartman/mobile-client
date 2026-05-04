@@ -39,13 +39,13 @@ const { TwilioNumberService } = require('./services/TwilioNumberService');
 const { TranscriptionsRepository } = require('./services/TranscriptionsRepository');
 
 // Initialize services
-const contactService = new ContactService();
+const messagesRepo = new MessagesRepository();
+const contactService = new ContactService({ messagesRepo });
 const userService = new UserService();
 const twilioNumberService = new TwilioNumberService({ userService });
 const authService = new AuthService({ userService, twilioNumberService });
 const voiceServices = new VoiceServices(userService);
 const sseService = new SseService(contactService);
-const messagesRepo = new MessagesRepository();
 const messagingService = new MessagingService({ contactService, userService, messagesRepo, sseService });
 const transcriptionsRepo = new TranscriptionsRepository();
 const webhookService = new WebhookService({
@@ -399,6 +399,35 @@ app.get('/messaging/thread/:userGuid', (req, res) => {
         res.json(thread);
     } catch (err) {
         logError('API', `GET /messaging/thread/${userGuid} - ${err.message}`);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Mark every inbound, unread message in this thread as read. Idempotent —
+// returns { markedCount: 0 } if the thread was already fully read. Broadcasts
+// `thread.read` via SSE when anything changed so other tabs/devices of the
+// same user clear their unread indicator live. Called by the message view on
+// pagehide / visibilitychange-hidden via navigator.sendBeacon.
+app.post('/messaging/thread/:userGuid/:threadId/read', (req, res) => {
+    const { userGuid, threadId } = req.params;
+    try {
+        const thread = messagesRepo.findThreadById(threadId);
+        if (!thread || thread.userGuid !== userGuid) {
+            return res.status(404).json({ error: 'Thread not found' });
+        }
+        const readAt = new Date().toISOString();
+        const markedCount = messagesRepo.markThreadRead(threadId, readAt);
+        if (markedCount > 0) {
+            sseService.broadcast(userGuid, 'thread.read', {
+                threadId,
+                remoteAddress: thread.remoteAddress,
+                contactGuid: thread.contactGuid,
+                readAt
+            });
+        }
+        res.json({ markedCount });
+    } catch (err) {
+        logError('API', `POST /messaging/thread/${userGuid}/${threadId}/read - ${err.message}`);
         res.status(500).json({ error: err.message });
     }
 });
