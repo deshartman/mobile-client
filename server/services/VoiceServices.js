@@ -110,6 +110,7 @@ class VoiceServices extends EventEmitter {
     /**
      * TwiML for a PSTN call arriving on a user's Twilio number.
      * Routes the call to the user's browser client via `<Dial><Client>`.
+     * Prepends `<Start><Transcription>` if TRANSCRIPTION_ENGINE is configured.
      */
     generateIncomingTwiml(clientIdentity) {
         const twiml = new VoiceResponse();
@@ -117,9 +118,39 @@ class VoiceServices extends EventEmitter {
             twiml.say("We're sorry, but we're unable to connect your call at this time.");
             return twiml.toString();
         }
+        this._appendTranscriptionIfEnabled(twiml);
         const dial = twiml.dial();
         dial.client(clientIdentity);
         return twiml.toString();
+    }
+
+    /**
+     * Prepend <Start><Transcription statusCallbackUrl="..." ... /></Start> to
+     * the TwiML response so Twilio starts real-time transcription on the call.
+     *
+     * No-op if TRANSCRIPTION_ENGINE is unset or SERVER_BASE_URL is missing —
+     * the feature disables cleanly. `track="both_tracks"` captures both sides
+     * of the bridged PSTN ↔ Client call. `partialResults="false"` keeps the
+     * webhook traffic low (we only want final utterances).
+     */
+    _appendTranscriptionIfEnabled(voiceResponse) {
+        const engine = process.env.TRANSCRIPTION_ENGINE;
+        const serverBaseUrl = process.env.SERVER_BASE_URL;
+        if (!engine || !serverBaseUrl) return;
+
+        const hasScheme = /^https?:\/\//.test(serverBaseUrl);
+        const origin = hasScheme ? serverBaseUrl.replace(/\/$/, '') : `http://${serverBaseUrl}`;
+        const statusCallbackUrl = `${origin}/webhooks/voice/transcription`;
+        const languageCode = process.env.TRANSCRIPTION_LANGUAGE_CODE || 'en-US';
+
+        const start = voiceResponse.start();
+        start.transcription({
+            statusCallbackUrl,
+            track: 'both_tracks',
+            languageCode,
+            transcriptionEngine: engine,
+            partialResults: 'false'
+        });
     }
 
     /**
@@ -195,6 +226,7 @@ class VoiceServices extends EventEmitter {
         }
 
         logOut('VoiceServices', `Dialing phone: ${phoneNumber} (callerId=${callerId}, statusCb=${dialOpts.action || 'none'})`);
+        this._appendTranscriptionIfEnabled(voiceResponse);
         const dial = voiceResponse.dial(dialOpts);
         const numberOpts = {};
         if (serverBaseUrl) {

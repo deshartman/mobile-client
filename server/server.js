@@ -22,7 +22,7 @@ app.use(express.static(path.join(__dirname, '../client'))); // Serve static file
 const { logOut, logError } = require('./utils/logger');
 
 // Initialize DB and run idempotent seed before services load
-require('./db/database');
+const { db } = require('./db/database');
 const { seed } = require('./db/seed');
 seed();
 
@@ -36,6 +36,7 @@ const { MessagesRepository } = require('./services/MessagesRepository');
 const { MessagingService } = require('./services/MessagingService');
 const { AuthService } = require('./services/AuthService');
 const { TwilioNumberService } = require('./services/TwilioNumberService');
+const { TranscriptionsRepository } = require('./services/TranscriptionsRepository');
 
 // Initialize services
 const contactService = new ContactService();
@@ -46,12 +47,14 @@ const voiceServices = new VoiceServices(userService);
 const sseService = new SseService(contactService);
 const messagesRepo = new MessagesRepository();
 const messagingService = new MessagingService({ contactService, userService, messagesRepo, sseService });
+const transcriptionsRepo = new TranscriptionsRepository();
 const webhookService = new WebhookService({
     contactService,
     userService,
     sseService,
     messagesRepo,
-    messagingService
+    messagingService,
+    transcriptionsRepo
 });
 
 
@@ -422,6 +425,44 @@ app.post('/webhooks/voice/status', express.urlencoded({ extended: false }), vali
     logOut('API', `POST /webhooks/voice/status - ${JSON.stringify(req.body)}`);
     webhookService.handleVoiceStatus(req.body);
     res.type('text/xml').send('<Response/>');
+});
+
+// Real-time transcription event callback. Configured per-call via the
+// statusCallbackUrl on <Transcription> in VoiceServices. Twilio POSTs here
+// for transcription-started, transcription-content (each utterance),
+// transcription-stopped, and transcription-error. We only persist final
+// utterances; the rest are log-only.
+app.post('/webhooks/voice/transcription', express.urlencoded({ extended: false }), validateTwilioRequest, (req, res) => {
+    const { CallSid, TranscriptionEvent, SequenceId } = req.body;
+    logOut('API', `POST /webhooks/voice/transcription - ${CallSid} ${TranscriptionEvent || 'content'}#${SequenceId}`);
+
+    try {
+        webhookService.handleTranscription(req.body);
+    } catch (err) {
+        logError('API', `POST /webhooks/voice/transcription - ${err.message}`);
+    }
+    res.status(204).send();
+});
+
+// Call transcript hydration for the call-detail view. Joins on activity →
+// call_sid → transcriptions so the caller doesn't need to know the CallSid
+// client-side. Returns [] if the activity has no call_sid (old activities
+// that predate the transcription feature, or non-Phone types).
+app.get('/activities/:userGuid/:activityId/transcript', (req, res) => {
+    const { userGuid, activityId } = req.params;
+    try {
+        const row = db.prepare(
+            'SELECT call_sid FROM activities WHERE user_guid = ? AND id = ?'
+        ).get(userGuid, activityId);
+        if (!row || !row.call_sid) {
+            return res.json({ callSid: null, utterances: [] });
+        }
+        const utterances = transcriptionsRepo.getByCallSid(row.call_sid);
+        res.json({ callSid: row.call_sid, utterances });
+    } catch (err) {
+        logError('API', `GET transcript for activity ${activityId} - ${err.message}`);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Inbound SMS. Each user's Twilio number is provisioned with

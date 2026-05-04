@@ -1,153 +1,116 @@
-# Mobile Client Application
+# MobileClient
 
-A secure, multi-user web-based mobile client application with user authentication, contact management, and activity tracking capabilities.
+A mobile-web client for per-user Twilio voice + SMS. Each authenticated user
+gets their own Twilio phone number and communicates with contacts from it.
+Phone-OTP signup, real-time call transcription, and per-user SMS threads.
 
-## Project Structure
-
-```
-MobileClient/
-├── client/          # Frontend application
-│   ├── components/  # Reusable UI components
-│   ├── services/    # API and service integrations
-│   ├── view/        # Application views/pages
-│   └── index.html   # Main HTML file
-└── server/          # Backend Node.js server
-    ├── services/    # Backend services
-    ├── utils/       # Utility functions
-    └── server.js    # Main server file
-```
+Server: Node/Express + SQLite. Client: static HTML/JS (no framework, no
+bundler).
 
 ## Prerequisites
 
-- Node.js (version 14 or higher)
-- pnpm (package manager)
+- Node.js 18+
+- [pnpm](https://pnpm.io/)
+- A Twilio account with Voice + SMS capabilities
+- An ngrok tunnel (or any public `https://…` URL) so Twilio can reach the
+  server for webhooks
 
-## Getting Started
-
-### 1. Install Dependencies
-
-Navigate to the server directory and install dependencies:
+## Quick start
 
 ```bash
 cd server
 pnpm install
+cp .env.example .env          # fill in Twilio creds + OTP_FROM_NUMBER
+ngrok http --url=<your-domain> 3001
+node server.js                # first boot runs DB migrations + seed
 ```
 
-### 2. Environment Setup
+Then open `https://<your-domain>/signup` and walk through the OTP flow. The
+app lands you at `/` after signup.
 
-Create a `.env` file in the server directory with your Twilio credentials:
+## Configuration
 
-```bash
-# Copy this template and fill in your values
-cp .env.example .env
-```
+See [server/.env.example](server/.env.example) for the full list. The
+important ones:
 
-### 3. Start the Server
-
-From the `server` directory:
-
-```bash
-# Development mode with auto-restart
-pnpm run dev
-
-# Production mode
-pnpm start
-```
-
-The server will start on an available port (auto port selection enabled).
-
-### 4. Access the Client
-
-The client is served as static files by the Express server. Once the server is running:
-
-1. Open your browser
-2. Navigate to `http://localhost:[PORT]` (e.g., `http://127.0.0.1:3001/`)
-3. The client application will load automatically
-
-**Note**: The client files are served from the root path, not from `/client/`.
-
-## User Authentication
-
-The application includes a secure login system:
-
-### First-Time Users
-1. Navigate to the application URL (e.g., `http://127.0.0.1:3001/`)
-2. You'll be presented with a login screen
-3. Enter your name and email address
-4. The system will create a new user account and automatically log you in
-
-### Returning Users
-1. Enter the same email address used previously
-2. The system will log you in with your existing account
-3. Your contacts and activities will be preserved
-
-### Pre-configured Test Users
-For development and testing, the following users are pre-configured:
-- **John Doe**: john.doe@example.com
-- **Jane Smith**: jane.smith@example.com  
-- **Des Hartman**: dhartman@twilio.com
-
-Each test user has sample contacts and activities for testing purposes.
-
-## Available Scripts
-
-### Server Scripts
-- `pnpm start` - Start the server in production mode
-- `pnpm run dev` - Start the server in development mode with nodemon
+| Var | Purpose |
+|---|---|
+| `SERVER_BASE_URL` | Public `https://…` URL for Twilio webhooks |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | Account creds (REST + webhook sig validation) |
+| `TWILIO_API_KEY`, `TWILIO_API_SECRET` | Voice SDK AccessToken minting |
+| `TWIML_APP_SID` | Voice URL points at `{SERVER_BASE_URL}/voice/outgoing` |
+| `OTP_FROM_NUMBER` | Dedicated Twilio number that sends signup OTPs |
+| `TWILIO_COUNTRY_CONFIG_<ISO>_*` | Per-country number provisioning config |
+| `TRANSCRIPTION_ENGINE` (optional) | `google` or `deepgram`. Unset = feature disabled |
+| `TRANSCRIPTION_LANGUAGE_CODE` (optional) | e.g. `en-AU`, `en-US`. Defaults to `en-US` |
 
 ## Features
 
-- **User Authentication**: Secure login with email-based user management
-- **Contact Management**: Manage and organize user-specific contacts
-- **Activity Tracking**: View call history and activities per user
-- **Data Isolation**: Complete user data separation and privacy
-- **Responsive Design**: Mobile-optimized interface
-- **Session Management**: Browser session-based authentication
-- **Cache Strategy**: 5-minute activity cache for performance
+- **Phone-OTP signup/signin** — 6-digit SMS code, 5-attempt lockout, automatic
+  Twilio number provisioning on first signup (country picked from the user's
+  E.164 prefix).
+- **Voice (PSTN ↔ browser)** — browser-initiated outbound calls via the Voice
+  SDK; inbound PSTN calls ring the browser via `<Dial><Client>`. Activity
+  logged per call with duration.
+- **Real-time transcription** — optional. When `TRANSCRIPTION_ENGINE` is set,
+  every PSTN call gets transcribed via Twilio's `<Transcription>` TwiML verb.
+  Utterances are persisted as they arrive and rendered as message-style
+  bubbles in the call-detail view (caller on the left, user on the right).
+- **SMS** — plain Twilio Programmable Messaging. Per-number `smsUrl` routes
+  inbound SMS to `/webhooks/messaging/inbound`. Outbound sends use
+  `client.messages.create({ from: user.twilioNumber, body })` with delivery
+  status callbacks.
+- **Per-user data isolation** — every row in every table is scoped by
+  `user_guid`; every query filters by the user GUID in the URL path.
+- **Server-sent events** — per-user SSE channel at `GET /events/:userGuid`
+  pushes `message.added`, `message.status`, `activity.added`, and
+  `incoming-call` events to the client in real time.
 
-## Development
+## Architecture overview
 
-The application uses a secure client-server architecture:
-- **Frontend**: Vanilla JavaScript with modular components and user authentication
-- **Backend**: Express.js server with user management and data isolation
-- **Authentication**: Session-based authentication with userGUID
-- **Communication**: REST API endpoints with user validation
-- **Data Storage**: In-memory storage with user-specific data isolation
+See [CLAUDE.md](CLAUDE.md) for the full architecture doc. At a glance:
 
-## Troubleshooting
+```
+Browser (static JS/HTML)  ──HTTP──▶  Express (server/server.js)
+                                          │
+                          ┌───────────────┼───────────────┐
+                          │               │               │
+                          ▼               ▼               ▼
+                      SQLite        Twilio Voice   Twilio Messaging
+                   (app.db, WAL)      + SDK           (SMS API)
+```
 
-### Common Issues
+All entities are scoped by `user_guid` (UUIDv4). Schema + migrations live in
+[server/db/database.js](server/db/database.js). All Twilio webhooks are
+signature-validated via `validateTwilioRequest` middleware.
 
-1. **Port Issues**: The server uses auto port selection. Check console output for the actual port.
-2. **Dependencies**: Run `pnpm install` in the server directory if you encounter module errors.
+## Scripts
 
-### Login and Authentication Issues
+```bash
+cd server
+pnpm start           # node server.js
+pnpm run dev         # nodemon server.js (auto-reload on change)
+```
 
-3. **Login Screen Appears Unexpectedly**: 
-   - Check browser DevTools → Application → Session Storage for valid userGUID
-   - Clear session storage and re-authenticate if corrupted
-   - Verify server is running and accessible
+The seed at [server/db/seed.js](server/db/seed.js) runs once on first boot
+when `users` is empty. Real signups coexist with seed users; the seed does
+not re-run once any user exists.
 
-4. **Empty Activities/Contacts**:
-   - Ensure you're logged in with a valid user account
-   - Check browser Network tab for successful API calls
-   - Verify server logs show your userGUID in requests
+## Deployment
 
-5. **Data Not Persisting**:
-   - Remember that server uses in-memory storage - data is lost on server restart
-   - Verify your session is valid (userGUID, userEmail, userName in sessionStorage)
-   - Check that contact creation triggers activity cache invalidation
+See [.claude/plans/flyio-deployment.md](.claude/plans/flyio-deployment.md)
+for Fly.io deployment notes (used on the private `aussie` branch).
 
-### Development and Debugging
+## Known limitations
 
-6. **Session Management**: 
-   - Sessions persist only during browser session (not after browser restart)
-   - Use pre-configured test users for consistent testing
-   - Monitor console logs for authentication flow
+- **SSE through mobile suspension** — live push is unreliable when the tab
+  backgrounds on mobile Safari. The message and main views re-hydrate on
+  `visibilitychange → visible` to catch up.
+- **No pagination** — main list, activity feed, and message thread all return
+  everything for the user.
+- **No refresh tokens** — session ends when the browser closes.
+- **Transcription cost** — ~$0.027/min per call when enabled. Leave
+  `TRANSCRIPTION_ENGINE` unset to disable.
 
-7. **User Data Isolation**: 
-   - Different users will see completely different data
-   - Use multiple browser profiles or incognito windows to test multi-user scenarios
-   - Check server logs to verify userGUID isolation
-
-For detailed debugging information, see the `CLAUDE.md` file which contains comprehensive troubleshooting guides and architecture details.
+For detailed architecture, webhook flows, client conventions, and
+troubleshooting, see [CLAUDE.md](CLAUDE.md).

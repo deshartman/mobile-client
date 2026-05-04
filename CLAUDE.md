@@ -18,11 +18,16 @@ All entities are scoped by `user_guid` (UUIDv4). FK cascade on user delete.
   (`type ∈ {Phone, Message, WhatsApp, SIP, Client}`, `value`).
 - **Activity** — one row per interaction. `type ∈ {Phone, Message, WhatsApp,
   Contact}`, `datetime`, `duration` (minutes; 0 = audit marker), `identity_value`,
-  `contact_guid` (nullable — inbound from unknown numbers is common).
+  `contact_guid` (nullable — inbound from unknown numbers is common), `call_sid`
+  (nullable; set on Phone activities to join with `transcriptions`).
 - **Thread** — `thread_id` (local `thr_<uuid>`), `user_guid`, `contact_guid`,
   `remote_address`, `proxy_address` (user's Twilio number), `activity_id`.
 - **Message** — `message_sid` (Twilio SMxxx), `thread_id`, `direction`, `author`,
-  `body`, `datetime`.
+  `body`, `datetime`, `status` (outbound only: `queued|sent|delivered|failed|undelivered`).
+- **Transcription** — composite PK `(call_sid, sequence_id)`, `track`
+  (`inbound_track` = caller, `outbound_track` = our user), `transcript`,
+  `confidence`, `datetime`. Written during the call; joined to activities via
+  `call_sid` after completion.
 
 ## Auth
 
@@ -65,6 +70,32 @@ the OTP because they don't exist until *after* verification.
   child leg).
 
 See [CLAUDE-VoiceSDK.md](.claude/plans/CLAUDE-VoiceSDK.md).
+
+## Real-time transcription (optional)
+
+Controlled by `TRANSCRIPTION_ENGINE` env var. When set (`google` or `deepgram`),
+`VoiceServices._appendTranscriptionIfEnabled` prepends
+`<Start><Transcription statusCallbackUrl="…/webhooks/voice/transcription"
+track="both_tracks" languageCode="…" transcriptionEngine="…" partialResults="false"/>`
+to the TwiML returned by both `/voice/outgoing` (outbound PSTN) and
+`/voice/incoming` (inbound PSTN).
+
+Twilio POSTs one webhook per utterance to `/webhooks/voice/transcription`
+([WebhookService.handleTranscription](server/services/WebhookService.js)).
+We persist only finals (`Final=true`); partials are disabled upstream.
+Utterances land in the `transcriptions` table keyed by
+`(call_sid, sequence_id)` — the composite PK + `INSERT OR IGNORE` give
+webhook-retry idempotency for free.
+
+The `call_sid` is stamped onto the Phone activity in `handleVoiceStatus` when
+the call completes, so the call-detail view can join activities →
+transcriptions after the fact. The feature disables cleanly: unset
+`TRANSCRIPTION_ENGINE` and no `<Transcription>` is emitted, no webhooks fire,
+no rows are written.
+
+Engine default is Twilio's Google STT; `deepgram` is the typical choice for
+phone audio. See [realtime-transcription.md](.claude/plans/realtime-transcription.md)
+for the design context.
 
 ## Messaging (SMS)
 
@@ -133,7 +164,8 @@ server/
 │   ├── VoiceServices.js               # AccessToken + TwiML generation
 │   ├── MessagingService.js            # SMS send + thread ensure
 │   ├── MessagesRepository.js          # threads + messages DAO
-│   ├── WebhookService.js              # Voice status + inbound SMS handlers
+│   ├── TranscriptionsRepository.js    # call transcript utterances DAO
+│   ├── WebhookService.js              # Voice status, inbound SMS, transcription
 │   └── SseService.js                  # Per-user SSE fanout
 └── scripts/
     └── migrate-detach-numbers.js      # One-shot: detach numbers from MS pool
@@ -157,6 +189,8 @@ server/
 | `POST /voice/outgoing`                | TwiML for outbound browser calls |
 | `POST /voice/incoming`                | TwiML for inbound PSTN → `<Client>` |
 | `POST /webhooks/voice/status`         | Twilio voice status callback |
+| `POST /webhooks/voice/transcription`  | Twilio real-time transcription utterances |
+| `GET  /activities/:userGuid/:activityId/transcript` | Call transcript hydration for call-detail view |
 | `GET  /events/:userGuid`              | SSE server-push |
 
 All webhook routes are gated by `validateTwilioRequest` — HMAC-signed via
@@ -170,6 +204,11 @@ See [.env.example](server/.env.example). Required:
 - `SERVER_BASE_URL` (public URL; must be `https://…` for webhook signature validation)
 - `TWIML_APP_SID`, `OTP_FROM_NUMBER`
 - `TWILIO_COUNTRY_CONFIG_<ISO>_TYPE` + bundle/address pair per supported country
+
+Optional:
+- `TRANSCRIPTION_ENGINE` (`google` or `deepgram`) + `TRANSCRIPTION_LANGUAGE_CODE`
+  (e.g. `en-AU`) — enable real-time transcription on PSTN calls. ~$0.027/min
+  per call. Unset to disable.
 
 ## Dev workflow
 

@@ -67,9 +67,26 @@ CREATE TABLE IF NOT EXISTS activities (
     datetime       TEXT NOT NULL,
     duration       INTEGER NOT NULL DEFAULT 0,
     identity_value TEXT,
-    contact_guid   TEXT REFERENCES contacts(contact_guid) ON DELETE SET NULL
+    contact_guid   TEXT REFERENCES contacts(contact_guid) ON DELETE SET NULL,
+    -- Twilio CallSid for Phone activities. Populated on call completion so
+    -- the call-detail view can join to transcriptions (written during the
+    -- call, before the activity row exists).
+    call_sid       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_activities_user_dt ON activities(user_guid, datetime DESC);
+-- idx_activities_call_sid created in the additive-migration block below so
+-- it runs AFTER the call_sid column has been added on older DBs.
+
+CREATE TABLE IF NOT EXISTS transcriptions (
+    call_sid     TEXT NOT NULL,
+    sequence_id  INTEGER NOT NULL,
+    track        TEXT NOT NULL,          -- 'inbound_track' | 'outbound_track'
+    transcript   TEXT NOT NULL,
+    confidence   REAL,
+    datetime     TEXT NOT NULL,
+    PRIMARY KEY (call_sid, sequence_id)
+);
+CREATE INDEX IF NOT EXISTS idx_transcriptions_call ON transcriptions(call_sid);
 
 CREATE TABLE IF NOT EXISTS threads (
     thread_id       TEXT PRIMARY KEY,
@@ -135,6 +152,17 @@ if (!messageCols.some(c => c.name === 'status')) {
     logOut('DB', 'Migrating messages table: adding status column');
     db.exec('ALTER TABLE messages ADD COLUMN status TEXT');
 }
+
+// Additive migration: activities.call_sid for Twilio CallSid linkage used by
+// the transcription feature (call-detail view joins activities → transcriptions).
+const activityCols = db.prepare(`PRAGMA table_info(activities)`).all();
+if (!activityCols.some(c => c.name === 'call_sid')) {
+    logOut('DB', 'Migrating activities table: adding call_sid column');
+    db.exec('ALTER TABLE activities ADD COLUMN call_sid TEXT');
+}
+// Ensure the index exists whether the column was just added or already present
+// (fresh DBs get the column via SCHEMA but the index is declared here).
+db.exec('CREATE INDEX IF NOT EXISTS idx_activities_call_sid ON activities(call_sid)');
 
 logOut('DB', `Database ready at ${DB_PATH}`);
 

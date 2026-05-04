@@ -1,5 +1,4 @@
-/* Call detail — single call view. Mostly blank for now; placeholder for
-   transcription, actions, recordings to land later. */
+/* Call detail — single call view. Shows call date/time + transcript bubbles. */
 
 .top-row {
     display: flex;
@@ -58,4 +57,71 @@
     font-size: 16px;
     color: var(--color-text);
     font-weight: 500;
+}
+
+/* Transcript — same bubble conventions as the message view but scoped here
+   to avoid coupling. If we ever add a third consumer, extract to a shared
+   stylesheet. inbound_track = received (left), outbound_track = sent (right). */
+.transcript-container {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.transcript-container .message {
+    display: flex;
+    flex-direction: column;
+    max-width: 80%;
+}
+
+.transcript-container .message.received {
+    align-self: flex-start;
+}
+
+.transcript-container .message.sent {
+    align-self: flex-end;
+}
+
+.transcript-container .message-content {
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 15px;
+    line-height: 1.35;
+    word-wrap: break-word;
+}
+
+.transcript-container .message.received .message-content {
+    background-color: var(--color-background, #f1f1f4);
+    color: var(--color-text, #111);
+    border-bottom-left-radius: 4px;
+}
+
+.transcript-container .message.sent .message-content {
+    background-color: var(--color-accent, #0b6ef8);
+    color: var(--color-on-accent, #fff);
+    border-bottom-right-radius: 4px;
+}
+
+.transcript-container .message-time {
+    font-size: 11px;
+    color: var(--color-text-weak, #888);
+    margin: 4px 8px 0 8px;
+}
+
+.transcript-container .message.sent .message-time {
+    align-self: flex-end;
+}
+
+.transcript-container .message.received .message-time {
+    align-self: flex-start;
+}
+
+.transcript-empty {
+    margin-top: 24px;
+    padding: 16px;
+    text-align: center;
+    color: var(--color-text-weak, #888);
+    font-size: 14px;
+    font-style: italic;
 }

@@ -97,7 +97,7 @@ class ContactService extends EventEmitter {
             'SELECT * FROM activities WHERE user_guid = ? AND contact_guid IS NULL AND identity_value = ? ORDER BY datetime DESC'
         );
         this._insertActivity = db.prepare(
-            'INSERT INTO activities (id, user_guid, type, datetime, duration, identity_value, contact_guid) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO activities (id, user_guid, type, datetime, duration, identity_value, contact_guid, call_sid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
 
         // Back-linking unknown-identity activities/threads to a newly-created (or
@@ -278,6 +278,7 @@ class ContactService extends EventEmitter {
             duration: r.duration,
             identityValue: r.identity_value,
             contactGuid: r.contact_guid,
+            callSid: r.call_sid || null,
             contact: r.contact_guid ? (this._contactFor(userGUID, r.contact_guid) || null) : null
         }));
     }
@@ -287,6 +288,7 @@ class ContactService extends EventEmitter {
         const datetime = activity.datetime || new Date().toISOString();
         const duration = activity.duration ?? 0;
         const contactGuid = activity.contactGuid || null;
+        const callSid = activity.callSid || null;
 
         this._insertActivity.run(
             id,
@@ -295,7 +297,8 @@ class ContactService extends EventEmitter {
             datetime,
             duration,
             activity.identityValue || null,
-            contactGuid
+            contactGuid,
+            callSid
         );
 
         const stored = {
@@ -304,7 +307,8 @@ class ContactService extends EventEmitter {
             datetime,
             duration,
             identityValue: activity.identityValue || null,
-            contactGuid
+            contactGuid,
+            callSid
         };
         const enriched = {
             ...stored,

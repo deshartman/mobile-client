@@ -1,12 +1,13 @@
 const { logOut, logError } = require('../utils/logger');
 
 class WebhookService {
-    constructor({ contactService, userService, sseService, messagesRepo, messagingService }) {
+    constructor({ contactService, userService, sseService, messagesRepo, messagingService, transcriptionsRepo }) {
         this.contactService = contactService;
         this.userService = userService;
         this.sseService = sseService;
         this.messagesRepo = messagesRepo;
         this.messagingService = messagingService;
+        this.transcriptionsRepo = transcriptionsRepo;
         this.callMap = new Map();
     }
 
@@ -80,9 +81,64 @@ class WebhookService {
             datetime: new Date().toISOString(),
             duration: durationMinutes,
             identityValue: mapping.to,
-            contactGuid: mapping.contactGuid
+            contactGuid: mapping.contactGuid,
+            callSid: CallSid
         });
         this.callMap.delete(CallSid);
+    }
+
+    /**
+     * Handle a real-time transcription event from Twilio. Payload shape:
+     *   { CallSid, TranscriptionSid, SequenceId, TranscriptionEvent, Track,
+     *     LanguageCode, Final, TranscriptionData, Timestamp, ... }
+     *
+     * We only persist final utterances from the 'transcription-content' event.
+     * Partials, started, stopped, and error events are logged but ignored.
+     * TranscriptionData is a JSON string carrying `{ transcript, confidence }`.
+     * Idempotency is provided by the composite PK (call_sid, sequence_id) +
+     * INSERT OR IGNORE in the repo.
+     */
+    handleTranscription(payload) {
+        const { CallSid, SequenceId, TranscriptionEvent, Track, Final, TranscriptionData, Timestamp } = payload;
+
+        if (TranscriptionEvent && TranscriptionEvent !== 'transcription-content') {
+            logOut('WebhookService', `Transcription event ${TranscriptionEvent} for ${CallSid} — ignored`);
+            return;
+        }
+        if (Final !== 'true') return;   // partials off, but be defensive
+        if (!CallSid || SequenceId == null || !TranscriptionData || !Track) {
+            logError('WebhookService', 'handleTranscription: missing required fields');
+            return;
+        }
+        if (!this.transcriptionsRepo) {
+            logError('WebhookService', 'handleTranscription: no transcriptionsRepo wired');
+            return;
+        }
+
+        let parsed;
+        try {
+            parsed = JSON.parse(TranscriptionData);
+        } catch (err) {
+            logError('WebhookService', `handleTranscription: TranscriptionData not JSON (${err.message}): ${TranscriptionData}`);
+            return;
+        }
+        const transcript = parsed?.transcript;
+        const confidence = parsed?.confidence;
+        if (!transcript) return;
+
+        const inserted = this.transcriptionsRepo.insertIfAbsent({
+            callSid: CallSid,
+            sequenceId: Number(SequenceId),
+            track: Track,
+            transcript,
+            confidence: typeof confidence === 'number' ? confidence : null,
+            datetime: Timestamp || new Date().toISOString()
+        });
+        if (inserted) {
+            logOut('WebhookService', `Transcription ${CallSid}#${SequenceId} (${Track}): ${transcript}`);
+        } else {
+            logOut('WebhookService', `Transcription ${CallSid}#${SequenceId} — duplicate ignored`);
+        }
     }
 
     /**
